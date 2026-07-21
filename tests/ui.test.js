@@ -1,0 +1,1209 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+function optionalRequire(modulePath) {
+  try {
+    return require(modulePath);
+  } catch (error) {
+    if (error && error.code === "MODULE_NOT_FOUND") {
+      return {};
+    }
+    throw error;
+  }
+}
+
+const uiApi = optionalRequire("../ui.js");
+
+test("ui exposes pure layout helpers through CommonJS and PromptHelper", () => {
+  assert.equal(typeof uiApi.clampFloatingPosition, "function");
+  assert.equal(typeof uiApi.calculatePanelPosition, "function");
+  assert.equal(typeof uiApi.getFocusCycleTarget, "function");
+  assert.equal(typeof uiApi.isDragGesture, "function");
+  assert.equal(
+    globalThis.PromptHelper?.clampFloatingPosition,
+    uiApi.clampFloatingPosition,
+  );
+});
+
+test("floating positions default to the lower-right and stay recoverable", () => {
+  const viewport = { width: 320, height: 240 };
+  const size = { width: 48, height: 48 };
+
+  assert.deepEqual(
+    uiApi.clampFloatingPosition(null, viewport, size, 12),
+    { left: 248, top: 168 },
+  );
+  assert.deepEqual(
+    uiApi.clampFloatingPosition(
+      { left: -500, top: 999 },
+      viewport,
+      size,
+      12,
+    ),
+    { left: 12, top: 180 },
+  );
+  assert.deepEqual(
+    uiApi.clampFloatingPosition(
+      { left: 50, top: 50 },
+      { width: 30, height: 20 },
+      { width: 48, height: 48 },
+      12,
+    ),
+    { left: 0, top: 0 },
+  );
+});
+
+test("panel positioning chooses available sides and clamps to the viewport", () => {
+  const viewport = { width: 500, height: 400 };
+  const panel = { width: 240, height: 220 };
+
+  assert.deepEqual(
+    uiApi.calculatePanelPosition(
+      { left: 430, top: 330, right: 478, bottom: 378, width: 48, height: 48 },
+      panel,
+      viewport,
+      { gap: 8, margin: 12 },
+    ),
+    { left: 238, top: 102, placement: "above" },
+  );
+  assert.deepEqual(
+    uiApi.calculatePanelPosition(
+      { left: 14, top: 14, right: 62, bottom: 62, width: 48, height: 48 },
+      panel,
+      viewport,
+      { gap: 8, margin: 12 },
+    ),
+    { left: 14, top: 70, placement: "below" },
+  );
+  assert.deepEqual(
+    uiApi.calculatePanelPosition(
+      { left: 20, top: 130, right: 68, bottom: 178, width: 48, height: 48 },
+      { width: 180, height: 280 },
+      { width: 500, height: 300 },
+      { gap: 8, margin: 12 },
+    ),
+    { left: 76, top: 14, placement: "right" },
+  );
+});
+
+test("focus cycling skips unusable entries and wraps in either direction", () => {
+  const first = { id: "first" };
+  const disabled = { id: "disabled", disabled: true };
+  const hidden = { id: "hidden", hidden: true };
+  const last = { id: "last" };
+  const entries = [first, disabled, hidden, last];
+
+  assert.equal(uiApi.getFocusCycleTarget(entries, first, false), last);
+  assert.equal(uiApi.getFocusCycleTarget(entries, last, false), first);
+  assert.equal(uiApi.getFocusCycleTarget(entries, first, true), last);
+  assert.equal(uiApi.getFocusCycleTarget([], first, false), null);
+});
+
+test("dragging begins only after pointer movement exceeds the threshold", () => {
+  const start = { x: 10, y: 10 };
+
+  assert.equal(uiApi.isDragGesture(start, { x: 13, y: 14 }, 5), false);
+  assert.equal(uiApi.isDragGesture(start, { x: 16, y: 10 }, 5), true);
+  assert.equal(uiApi.isDragGesture(start, { x: 99, y: 99 }, -1), true);
+  assert.equal(uiApi.isDragGesture(null, { x: 20, y: 20 }, 5), false);
+});
+
+class FakeEventTarget {
+  constructor() {
+    this._listeners = new Map();
+  }
+
+  addEventListener(type, listener) {
+    const listeners = this._listeners.get(type) || [];
+    listeners.push(listener);
+    this._listeners.set(type, listeners);
+  }
+
+  removeEventListener(type, listener) {
+    const listeners = this._listeners.get(type) || [];
+    this._listeners.set(
+      type,
+      listeners.filter((candidate) => candidate !== listener),
+    );
+  }
+
+  _invoke(event) {
+    for (const listener of [...(this._listeners.get(event.type) || [])]) {
+      event.currentTarget = this;
+      listener.call(this, event);
+    }
+  }
+}
+
+class FakeEvent {
+  constructor(type, init = {}) {
+    this.type = type;
+    this.bubbles = init.bubbles !== false;
+    this.cancelable = init.cancelable !== false;
+    this.defaultPrevented = false;
+    this.propagationStopped = false;
+    Object.assign(this, init);
+  }
+
+  preventDefault() {
+    if (this.cancelable) {
+      this.defaultPrevented = true;
+    }
+  }
+
+  stopPropagation() {
+    this.propagationStopped = true;
+  }
+}
+
+class FakeClassList {
+  constructor(element) {
+    this.element = element;
+  }
+
+  _values() {
+    return this.element.className.split(/\s+/u).filter(Boolean);
+  }
+
+  contains(value) {
+    return this._values().includes(value);
+  }
+
+  add(...values) {
+    this.element.className = [...new Set([...this._values(), ...values])].join(" ");
+  }
+
+  remove(...values) {
+    this.element.className = this._values()
+      .filter((value) => !values.includes(value))
+      .join(" ");
+  }
+
+  toggle(value, force) {
+    const shouldAdd = force === undefined ? !this.contains(value) : Boolean(force);
+    if (shouldAdd) {
+      this.add(value);
+    } else {
+      this.remove(value);
+    }
+    return shouldAdd;
+  }
+}
+
+class FakeElement extends FakeEventTarget {
+  constructor(tagName, ownerDocument) {
+    super();
+    this.nodeType = 1;
+    this.tagName = String(tagName).toUpperCase();
+    this.ownerDocument = ownerDocument;
+    this.parentNode = null;
+    this.children = [];
+    this.attributes = new Map();
+    this.style = {};
+    this.hidden = false;
+    this.disabled = false;
+    this.required = false;
+    this.value = "";
+    this.type = "";
+    this._textContent = "";
+    this._capturedPointers = new Set();
+  }
+
+  get parentElement() {
+    return this.parentNode?.nodeType === 1 ? this.parentNode : null;
+  }
+
+  get childNodes() {
+    return this.children;
+  }
+
+  get firstChild() {
+    return this.children[0] || null;
+  }
+
+  get id() {
+    return this.getAttribute("id") || "";
+  }
+
+  set id(value) {
+    this.setAttribute("id", value);
+  }
+
+  get className() {
+    return this.getAttribute("class") || "";
+  }
+
+  set className(value) {
+    this.setAttribute("class", value);
+  }
+
+  get classList() {
+    return new FakeClassList(this);
+  }
+
+  get textContent() {
+    return this._textContent + this.children.map((child) => child.textContent).join("");
+  }
+
+  set textContent(value) {
+    this._textContent = String(value ?? "");
+    this.children = [];
+  }
+
+  get isConnected() {
+    let current = this;
+    while (current) {
+      if (current.nodeType === 9) {
+        return true;
+      }
+      current = current.parentNode;
+    }
+    return false;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(String(name), String(value));
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(String(name)) ?? null;
+  }
+
+  hasAttribute(name) {
+    return this.attributes.has(String(name));
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(String(name));
+  }
+
+  appendChild(child) {
+    if (child.parentNode) {
+      child.parentNode.removeChild(child);
+    }
+    this.children.push(child);
+    child.parentNode = this;
+    return child;
+  }
+
+  append(...children) {
+    for (const child of children) {
+      this.appendChild(child);
+    }
+  }
+
+  removeChild(child) {
+    const index = this.children.indexOf(child);
+    if (index >= 0) {
+      this.children.splice(index, 1);
+      child.parentNode = null;
+    }
+    return child;
+  }
+
+  replaceChildren(...children) {
+    for (const child of this.children) {
+      child.parentNode = null;
+    }
+    this.children = [];
+    this._textContent = "";
+    this.append(...children);
+  }
+
+  remove() {
+    this.parentNode?.removeChild(this);
+  }
+
+  contains(candidate) {
+    let current = candidate;
+    while (current) {
+      if (current === this) {
+        return true;
+      }
+      current = current.parentNode;
+    }
+    return false;
+  }
+
+  matches(selector) {
+    return matchesFakeSelector(this, selector);
+  }
+
+  closest(selector) {
+    let current = this;
+    while (current?.nodeType === 1) {
+      if (current.matches(selector)) {
+        return current;
+      }
+      current = current.parentNode;
+    }
+    return null;
+  }
+
+  querySelectorAll(selector) {
+    return fakeDescendants(this).filter((element) =>
+      selector.split(",").some((part) => matchesFakeSelector(element, part.trim())),
+    );
+  }
+
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+
+  focus() {
+    this.ownerDocument.activeElement = this;
+  }
+
+  click() {
+    this.dispatchEvent(new FakeEvent("click", { bubbles: true }));
+  }
+
+  dispatchEvent(event) {
+    if (!event.target) {
+      event.target = this;
+    }
+    let current = this;
+    while (current) {
+      current._invoke?.(event);
+      if (!event.bubbles || event.propagationStopped) {
+        break;
+      }
+      current = current.parentNode;
+    }
+    return !event.defaultPrevented;
+  }
+
+  setPointerCapture(pointerId) {
+    this._capturedPointers.add(pointerId);
+  }
+
+  hasPointerCapture(pointerId) {
+    return this._capturedPointers.has(pointerId);
+  }
+
+  releasePointerCapture(pointerId) {
+    this._capturedPointers.delete(pointerId);
+  }
+
+  getBoundingClientRect() {
+    const width = this.id === "phg-launcher" ? 50 : this.id === "phg-panel" ? 360 : 400;
+    const height = this.id === "phg-launcher" ? 52 : this.id === "phg-panel" ? 300 : 320;
+    const left = Number.parseFloat(this.style.left) || 0;
+    const top = Number.parseFloat(this.style.top) || 0;
+    return {
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+    };
+  }
+}
+
+class FakeDocument extends FakeEventTarget {
+  constructor() {
+    super();
+    this.nodeType = 9;
+    this.parentNode = null;
+    this.activeElement = null;
+    this.documentElement = new FakeElement("html", this);
+    this.documentElement.parentNode = this;
+    this.body = new FakeElement("body", this);
+    this.documentElement.appendChild(this.body);
+  }
+
+  createElement(tagName) {
+    return new FakeElement(tagName, this);
+  }
+
+  getElementById(id) {
+    return [this.documentElement, ...fakeDescendants(this.documentElement)].find(
+      (element) => element.id === id,
+    ) || null;
+  }
+
+  querySelectorAll(selector) {
+    return [this.documentElement, ...fakeDescendants(this.documentElement)].filter(
+      (element) =>
+        selector.split(",").some((part) => matchesFakeSelector(element, part.trim())),
+    );
+  }
+
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+
+  dispatchEvent(event) {
+    if (!event.target) {
+      event.target = this;
+    }
+    this._invoke(event);
+    return !event.defaultPrevented;
+  }
+}
+
+class FakeWindow extends FakeEventTarget {
+  constructor(documentObject) {
+    super();
+    this.document = documentObject;
+    this.innerWidth = 900;
+    this.innerHeight = 700;
+    this.Event = FakeEvent;
+    this.PointerEvent = FakeEvent;
+  }
+
+  dispatchEvent(event) {
+    if (!event.target) {
+      event.target = this;
+    }
+    this._invoke(event);
+    return !event.defaultPrevented;
+  }
+}
+
+function fakeDescendants(root) {
+  const descendants = [];
+  for (const child of root.children || []) {
+    descendants.push(child, ...fakeDescendants(child));
+  }
+  return descendants;
+}
+
+function matchesFakeSelector(element, selector) {
+  if (!selector) {
+    return false;
+  }
+  const notTabMinusOne = selector.includes(":not([tabindex=\"-1\"])");
+  const base = selector.replace(":not([tabindex=\"-1\"])", "");
+  if (notTabMinusOne && element.getAttribute("tabindex") === "-1") {
+    return false;
+  }
+  if (base.startsWith("#")) {
+    return element.id === base.slice(1);
+  }
+  if (base.startsWith(".")) {
+    return element.classList.contains(base.slice(1));
+  }
+  const attributeMatch = /^\[([^=]+?)(?:="([^"]*)")?\]$/u.exec(base);
+  if (attributeMatch) {
+    return attributeMatch[2] === undefined
+      ? element.hasAttribute(attributeMatch[1])
+      : element.getAttribute(attributeMatch[1]) === attributeMatch[2];
+  }
+  const tagAttributeMatch = /^([a-z]+)\[([^=]+)="([^"]*)"\]$/u.exec(base);
+  if (tagAttributeMatch) {
+    return (
+      element.tagName === tagAttributeMatch[1].toUpperCase() &&
+      element.getAttribute(tagAttributeMatch[2]) === tagAttributeMatch[3]
+    );
+  }
+  return element.tagName === base.toUpperCase();
+}
+
+function createFakeDom() {
+  const documentObject = new FakeDocument();
+  const windowObject = new FakeWindow(documentObject);
+  documentObject.defaultView = windowObject;
+  return { documentObject, windowObject };
+}
+
+function createControllerStub() {
+  return {
+    bookmarkCalls: 0,
+    insertCalls: [],
+    saveCalls: [],
+    deleteCalls: [],
+    historyDeleteCalls: [],
+    positionCalls: [],
+    nextSaveResult: { ok: true },
+    nextDeleteResult: { ok: true },
+    captureBookmark() {
+      this.bookmarkCalls += 1;
+      return { offset: 2 };
+    },
+    async insertPrompt(id) {
+      this.insertCalls.push(id);
+      return { ok: true };
+    },
+    async savePrompt(record) {
+      this.saveCalls.push(cloneValue(record));
+      return this.nextSaveResult;
+    },
+    async deletePrompt(id) {
+      this.deleteCalls.push(id);
+      return this.nextDeleteResult;
+    },
+    async deletePlaceholderHistory(value) {
+      this.historyDeleteCalls.push(value);
+      return { ok: true };
+    },
+    async saveButtonPosition(position) {
+      this.positionCalls.push(cloneValue(position));
+      return { ok: true };
+    },
+  };
+}
+
+function cloneValue(value) {
+  return structuredClone(value);
+}
+
+function flushTasks() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+function mountUi() {
+  const { documentObject, windowObject } = createFakeDom();
+  const controller = createControllerStub();
+  const ui = new uiApi.PromptHelperUI({
+    document: documentObject,
+    window: windowObject,
+  });
+  const root = ui.mount(controller);
+  return { ui, root, controller, documentObject, windowObject };
+}
+
+const emptyState = Object.freeze({
+  prompts: [],
+  placeholderHistory: [],
+  buttonPosition: null,
+  loading: false,
+  busy: false,
+});
+
+test("PromptHelperUI mounts the Quiet Orbit launcher and three-part panel", () => {
+  const { ui, root, documentObject } = mountUi();
+  const launcher = documentObject.getElementById("phg-launcher");
+  const panel = documentObject.getElementById("phg-panel");
+
+  assert.equal(root.id, "phg-root");
+  assert.equal(documentObject.querySelectorAll("#phg-root").length, 1);
+  assert.equal(launcher.tagName, "BUTTON");
+  assert.doesNotMatch(launcher.textContent, /提示词/u);
+  assert.ok(launcher.querySelector(".phg-launcher-mark"));
+  const launcherSvg = launcher.querySelector("svg");
+  assert.ok(launcherSvg);
+  assert.equal(launcherSvg.getAttribute("viewBox"), "0 0 100 104.586");
+  const launcherPrompt = launcher.querySelector(".phg-launcher-prompt");
+  assert.ok(launcherPrompt);
+  assert.equal(launcherPrompt.tagName, "PATH");
+  assert.equal(
+    launcherPrompt.getAttribute("d"),
+    "M54.9 74.6H30.4A10.8 10.8 0 0 1 19.6 63.8V38.4A10.8 10.8 0 0 1 30.4 27.6h39.6a10.8 10.8 0 0 1 10.8 10.8v25.4a10.8 10.8 0 0 1-2.5 6.9",
+  );
+  assert.equal(
+    launcher.querySelector(".phg-launcher-insertion").getAttribute("d"),
+    "M31.4 39.6v20.5",
+  );
+  const clickRings = launcher.querySelectorAll(".phg-launcher-click-ring");
+  assert.equal(clickRings.length, 2);
+  assert.deepEqual(
+    clickRings.map((ring) => [
+      ring.getAttribute("cx"),
+      ring.getAttribute("cy"),
+      ring.getAttribute("r"),
+    ]),
+    [
+      ["61.4", "64.5", "10.8"],
+      ["61.4", "64.5", "6.5"],
+    ],
+  );
+  assert.equal(
+    launcher.querySelector(".phg-launcher-pointer").getAttribute("d"),
+    "M61.1 64.1 61.8 80.2 65.1 77.1 69.1 83.4 71.5 81.8 67.9 75.9 73.2 75Z",
+  );
+  assert.equal(launcher.querySelector(".phg-launcher-badge"), null);
+  assert.doesNotMatch(launcher.textContent, /P/u);
+  assert.equal(launcher.getAttribute("aria-controls"), "phg-panel");
+
+  assert.equal(panel.getAttribute("data-phg-state"), "closed");
+  assert.equal(panel.getAttribute("aria-hidden"), "true");
+  assert.equal(panel.hidden, false);
+  assert.equal(panel.inert, true);
+  assert.ok(panel.querySelector(".phg-panel-header"));
+  assert.ok(panel.querySelector(".phg-panel-body"));
+  assert.ok(panel.querySelector(".phg-panel-footer"));
+  assert.ok(documentObject.getElementById("phg-add-prompt"));
+
+  ui.openPanel();
+  assert.equal(panel.getAttribute("data-phg-state"), "open");
+  assert.equal(panel.getAttribute("aria-hidden"), "false");
+  assert.equal(panel.inert, false);
+  assert.equal(launcher.getAttribute("aria-expanded"), "true");
+
+  ui.closePanel({ restoreFocus: false });
+  assert.equal(panel.getAttribute("data-phg-state"), "closed");
+  assert.equal(panel.getAttribute("aria-hidden"), "true");
+  assert.equal(panel.inert, true);
+  assert.equal(launcher.getAttribute("aria-expanded"), "false");
+});
+
+test("panel positioning uses untransformed layout size during its opening transition", () => {
+  const { ui, documentObject, windowObject } = mountUi();
+  const panel = documentObject.getElementById("phg-panel");
+  windowObject.innerWidth = 1280;
+  ui.render({
+    ...emptyState,
+    buttonPosition: { left: 1216, top: 12 },
+  });
+
+  panel.getBoundingClientRect = () => ({
+    left: Number.parseFloat(panel.style.left) || 0,
+    top: Number.parseFloat(panel.style.top) || 0,
+    right: (Number.parseFloat(panel.style.left) || 0) + 332.34,
+    bottom: (Number.parseFloat(panel.style.top) || 0) + 286.5,
+    width: 332.34,
+    height: 286.5,
+  });
+  Object.defineProperties(panel, {
+    offsetWidth: { value: 348 },
+    offsetHeight: { value: 300 },
+  });
+
+  ui.openPanel();
+
+  const panelRight = Number.parseFloat(panel.style.left) + panel.offsetWidth;
+  assert.ok(
+    panelRight <= windowObject.innerWidth - 12,
+    `expected panel right ${panelRight} to stay within ${windowObject.innerWidth - 12}`,
+  );
+});
+
+test("render shows empty state or accessible prompt cards and dispatches CRUD actions", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render(emptyState);
+  assert.equal(documentObject.getElementById("phg-empty").hidden, false);
+
+  const prompt = {
+    id: "one",
+    name: "代码审查",
+    prompt: "请检查这段代码并给出改进建议。",
+    placeholder: "【光标】",
+  };
+  ui.render({ ...emptyState, prompts: [prompt] });
+  assert.equal(documentObject.getElementById("phg-empty").hidden, true);
+  assert.equal(documentObject.querySelectorAll(".phg-prompt-card").length, 1);
+  const card = documentObject.querySelector(".phg-prompt-card");
+  assert.ok(card.querySelector(".phg-card-main"));
+  assert.ok(card.querySelector(".phg-card-actions"));
+  assert.equal(card.querySelectorAll(".phg-card-action").length, 2);
+  assert.ok(card.querySelector(".phg-card-action-danger"));
+  assert.match(documentObject.getElementById("phg-prompt-list").textContent, /代码审查/u);
+
+  const editButton = card.querySelector('[data-phg-action="edit"]');
+  const deleteButton = card.querySelector('[data-phg-action="delete"]');
+  for (const [button, kind, label] of [
+    [editButton, "edit", "编辑提示词"],
+    [deleteButton, "delete", "删除提示词"],
+  ]) {
+    assert.ok(button);
+    assert.equal(button.getAttribute("title"), label);
+    assert.match(button.getAttribute("aria-label"), new RegExp(label, "u"));
+    const icon = button.querySelector("svg");
+    assert.ok(icon);
+    assert.equal(icon.getAttribute("data-phg-icon"), kind);
+    assert.equal(icon.getAttribute("aria-hidden"), "true");
+    assert.equal(button.textContent, "");
+  }
+
+  documentObject.querySelector('[data-phg-action="insert"]').click();
+  await flushTasks();
+  assert.deepEqual(controller.insertCalls, ["one"]);
+
+  editButton.querySelector("svg").click();
+  const dialog = documentObject.querySelector('[aria-modal="true"]');
+  assert.ok(dialog);
+  assert.equal(dialog.getAttribute("role"), "dialog");
+  assert.equal(documentObject.getElementById("phg-prompt-name").value, "代码审查");
+  assert.equal(documentObject.getElementById("phg-prompt-body").value, prompt.prompt);
+  ui.render({ ...emptyState, prompts: [prompt], busy: true });
+  ui.render({ ...emptyState, prompts: [prompt], busy: false });
+  ui.closeDialog();
+  assert.equal(
+    documentObject.activeElement,
+    documentObject.querySelector('[data-phg-action="edit"]'),
+  );
+
+  documentObject
+    .querySelector('[data-phg-action="delete"]')
+    .querySelector("svg")
+    .click();
+  assert.match(documentObject.getElementById("phg-dialog-title").textContent, /删除/u);
+  assert.equal(
+    documentObject.getElementById("phg-dialog").getAttribute("data-phg-kind"),
+    "delete",
+  );
+  documentObject.getElementById("phg-confirm-delete").click();
+  await flushTasks();
+  assert.deepEqual(controller.deleteCalls, ["one"]);
+});
+
+test("add/edit dialog uses defaults, history actions, retry retention, and focus restore", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render({
+    ...emptyState,
+    placeholderHistory: ["<最近>", "<旧值>"],
+  });
+  ui.openPanel();
+  const addButton = documentObject.getElementById("phg-add-prompt");
+  addButton.focus();
+  addButton.click();
+
+  const dialog = documentObject.getElementById("phg-dialog");
+  assert.equal(dialog.getAttribute("data-phg-kind"), "prompt");
+  assert.ok(dialog.querySelector(".phg-dialog-header"));
+  assert.ok(dialog.querySelector(".phg-dialog-body"));
+  assert.ok(dialog.querySelector(".phg-dialog-footer"));
+
+  const name = documentObject.getElementById("phg-prompt-name");
+  const body = documentObject.getElementById("phg-prompt-body");
+  const placeholder = documentObject.getElementById("phg-prompt-placeholder");
+  assert.equal(name.required, true);
+  assert.equal(placeholder.value, "【光标】");
+  assert.equal(documentObject.activeElement, name);
+  assert.equal(documentObject.querySelectorAll(".phg-history-row").length, 2);
+
+  documentObject.querySelector('[data-phg-history-value="<最近>"]').click();
+  assert.equal(placeholder.value, "<最近>");
+  assert.equal(documentObject.activeElement, placeholder);
+  documentObject.querySelector('[data-phg-history-delete="<旧值>"]').click();
+  await flushTasks();
+  assert.deepEqual(controller.historyDeleteCalls, ["<旧值>"]);
+
+  name.value = "新提示词";
+  body.value = "正文";
+  controller.nextSaveResult = { ok: false, code: "SAVE_FAILED" };
+  documentObject.getElementById("phg-prompt-form").dispatchEvent(
+    new FakeEvent("submit", { bubbles: true }),
+  );
+  await flushTasks();
+  assert.ok(documentObject.getElementById("phg-dialog-layer"));
+  assert.deepEqual(controller.saveCalls.at(-1), {
+    id: undefined,
+    name: "新提示词",
+    prompt: "正文",
+    placeholder: "<最近>",
+  });
+
+  controller.nextSaveResult = { ok: true, id: "new" };
+  documentObject.getElementById("phg-prompt-form").dispatchEvent(
+    new FakeEvent("submit", { bubbles: true }),
+  );
+  await flushTasks();
+  assert.equal(documentObject.getElementById("phg-dialog-layer"), null);
+  assert.equal(documentObject.activeElement, addButton);
+});
+
+test("dialogs trap focus, Escape closes by layer, and status is visibly announced", () => {
+  const { ui, documentObject } = mountUi();
+  ui.render(emptyState);
+  ui.openPanel();
+  const addButton = documentObject.getElementById("phg-add-prompt");
+  addButton.click();
+
+  const dialog = documentObject.querySelector('[aria-modal="true"]');
+  const focusables = dialog.querySelectorAll(
+    'button,input,textarea,select,[tabindex]:not([tabindex="-1"])',
+  ).filter((element) => !element.disabled && !element.hidden);
+  focusables.at(-1).focus();
+  dialog.dispatchEvent(new FakeEvent("keydown", { key: "Tab", bubbles: true }));
+  assert.equal(documentObject.activeElement, focusables[0]);
+  focusables[0].focus();
+  dialog.dispatchEvent(
+    new FakeEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }),
+  );
+  assert.equal(documentObject.activeElement, focusables.at(-1));
+
+  dialog.dispatchEvent(new FakeEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(documentObject.getElementById("phg-dialog-layer"), null);
+  assert.equal(documentObject.activeElement, addButton);
+  documentObject.getElementById("phg-launcher").dispatchEvent(
+    new FakeEvent("keydown", { key: "Escape", bubbles: true }),
+  );
+  assert.equal(
+    documentObject.getElementById("phg-panel").getAttribute("data-phg-state"),
+    "closed",
+  );
+  assert.equal(documentObject.activeElement, documentObject.getElementById("phg-launcher"));
+
+  ui.showStatus("保存失败，请重试。", "error");
+  const status = documentObject.getElementById("phg-status");
+  assert.equal(status.hidden, false);
+  assert.equal(status.getAttribute("role"), "status");
+  assert.equal(status.getAttribute("aria-live"), "polite");
+  assert.equal(status.textContent, "保存失败，请重试。");
+  assert.equal(status.getAttribute("data-phg-kind"), "error");
+});
+
+test("pointer drag captures bookmark, persists clamped coordinates, and suppresses toggle", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render(emptyState);
+  const launcher = documentObject.getElementById("phg-launcher");
+  launcher.dispatchEvent(
+    new FakeEvent("pointerdown", {
+      pointerId: 7,
+      clientX: 850,
+      clientY: 650,
+      button: 0,
+      bubbles: true,
+    }),
+  );
+  launcher.dispatchEvent(
+    new FakeEvent("pointermove", {
+      pointerId: 7,
+      clientX: 700,
+      clientY: 500,
+      bubbles: true,
+    }),
+  );
+  assert.equal(launcher.getAttribute("data-phg-dragging"), "true");
+  launcher.dispatchEvent(
+    new FakeEvent("pointerup", {
+      pointerId: 7,
+      clientX: 700,
+      clientY: 500,
+      bubbles: true,
+    }),
+  );
+  launcher.click();
+  await flushTasks();
+
+  assert.equal(controller.bookmarkCalls >= 1, true);
+  assert.equal(controller.positionCalls.length, 1);
+  assert.deepEqual(controller.positionCalls[0], {
+    left: Number.parseFloat(launcher.style.left),
+    top: Number.parseFloat(launcher.style.top),
+  });
+  assert.equal(
+    documentObject.getElementById("phg-panel").getAttribute("data-phg-state"),
+    "closed",
+  );
+  assert.equal(launcher.hasPointerCapture(7), false);
+  assert.equal(launcher.getAttribute("data-phg-dragging"), null);
+
+  launcher.click();
+  assert.equal(
+    documentObject.getElementById("phg-panel").getAttribute("data-phg-state"),
+    "open",
+  );
+});
+
+test("visible status stays anchored and clamped while the launcher moves", () => {
+  const { ui, documentObject } = mountUi();
+  ui.render(emptyState);
+  const launcher = documentObject.getElementById("phg-launcher");
+  launcher.focus();
+
+  ui.showStatus("保存失败，请重试。", "error");
+  const status = documentObject.getElementById("phg-status");
+  assert.equal(Number.isFinite(Number.parseFloat(status.style.left)), true);
+  assert.equal(Number.isFinite(Number.parseFloat(status.style.top)), true);
+  assert.equal(documentObject.activeElement, launcher);
+  const initialStatusPosition = {
+    left: status.style.left,
+    top: status.style.top,
+  };
+
+  launcher.dispatchEvent(
+    new FakeEvent("pointerdown", {
+      pointerId: 8,
+      clientX: 850,
+      clientY: 650,
+      button: 0,
+      bubbles: true,
+    }),
+  );
+  launcher.dispatchEvent(
+    new FakeEvent("pointermove", {
+      pointerId: 8,
+      clientX: 700,
+      clientY: 500,
+      bubbles: true,
+    }),
+  );
+  launcher.dispatchEvent(
+    new FakeEvent("pointerup", {
+      pointerId: 8,
+      clientX: 700,
+      clientY: 500,
+      bubbles: true,
+    }),
+  );
+
+  const statusRect = status.getBoundingClientRect();
+  assert.notDeepEqual(
+    { left: status.style.left, top: status.style.top },
+    initialStatusPosition,
+  );
+  assert.equal(statusRect.left >= 12, true);
+  assert.equal(statusRect.top >= 12, true);
+  assert.equal(statusRect.right <= 900 - 12, true);
+  assert.equal(statusRect.bottom <= 700 - 12, true);
+  assert.equal(documentObject.activeElement, launcher);
+});
+
+test("outside pointerdown closes only the panel layer and destroy removes the listener", () => {
+  const { ui, documentObject } = mountUi();
+  ui.render(emptyState);
+  ui.openPanel();
+
+  documentObject.body.dispatchEvent(
+    new FakeEvent("pointerdown", { bubbles: true }),
+  );
+  assert.equal(
+    documentObject.getElementById("phg-panel").getAttribute("data-phg-state"),
+    "closed",
+  );
+
+  ui.openPanel();
+  documentObject.getElementById("phg-add-prompt").click();
+  documentObject.body.dispatchEvent(
+    new FakeEvent("pointerdown", { bubbles: true }),
+  );
+  assert.equal(
+    documentObject.getElementById("phg-panel").getAttribute("data-phg-state"),
+    "open",
+  );
+  assert.ok(documentObject.getElementById("phg-dialog-layer"));
+
+  const listenerCount = (documentObject._listeners.get("pointerdown") || []).length;
+  assert.equal(listenerCount, 1);
+  ui.destroy();
+  assert.equal((documentObject._listeners.get("pointerdown") || []).length, 0);
+});
+
+test("content stylesheet encodes Quiet Orbit visuals and interaction states", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+
+  assert.match(css, /--phg-panel:\s*#1f2024/u);
+  assert.match(css, /--phg-card:\s*#232429/u);
+  assert.match(css, /--phg-accent-start:\s*#6c79f4/u);
+  assert.match(css, /--phg-accent-end:\s*#8a5dda/u);
+  assert.match(css, /linear-gradient\(145deg,\s*var\(--phg-accent-start\)/u);
+  assert.match(
+    css,
+    /#phg-root \.phg-launcher\s*\{[\s\S]*?width:\s*50px;[\s\S]*?height:\s*52px;[\s\S]*?border-radius:\s*13px;/u,
+  );
+  assert.doesNotMatch(
+    css,
+    /#phg-root \.phg-launcher\s*\{[^}]*border-radius:\s*50%;/u,
+  );
+  assert.match(
+    css,
+    /\.phg-launcher-mark svg\s*\{[\s\S]*?width:\s*50px;[\s\S]*?height:\s*52px;/u,
+  );
+  assert.match(css, /\.phg-launcher::before/u);
+  assert.match(css, /translate3d\(0,\s*-3px,\s*0\)\s*scale\(1\.035\)/u);
+  assert.match(css, /\.phg-panel\[data-phg-state="open"\]/u);
+  assert.match(css, /cubic-bezier\(\.16,\s*1,\s*\.3,\s*1\)/u);
+  assert.match(css, /nth-child\(1\)[\s\S]*55ms/u);
+  assert.match(css, /nth-child\(2\)[\s\S]*82ms/u);
+  assert.match(css, /nth-child\(3\)[\s\S]*109ms/u);
+  assert.match(css, /\.phg-prompt-card:hover[\s\S]*\.phg-card-actions/u);
+  assert.match(css, /\.phg-prompt-card:focus-within[\s\S]*\.phg-card-actions/u);
+  assert.match(css, /@media[^\{]*pointer:\s*coarse/u);
+  assert.match(css, /prefers-reduced-motion:\s*reduce/u);
+  assert.match(css, /html\.dark\s+#phg-root/u);
+  assert.match(css, /html\[data-theme="dark"\]\s+#phg-root/u);
+  assert.match(css, /html\.light\s+#phg-root/u);
+  assert.match(
+    css,
+    /\.phg-panel-footer \.phg-button-primary\s*\{[^}]*color:\s*var\(--phg-text\);/su,
+  );
+  assert.doesNotMatch(css, /color:\s*#c9cad1\b/u);
+  assert.match(css, /prefers-color-scheme:\s*dark/u);
+  assert.match(css, /prefers-color-scheme:\s*light/u);
+  assert.match(css, /\.phg-dialog-header/u);
+  assert.match(css, /\.phg-dialog-body/u);
+  assert.match(css, /\.phg-dialog-footer/u);
+  assert.match(css, /\.phg-history-row/u);
+  assert.match(css, /\.phg-status\[data-phg-kind="error"\]/u);
+  assert.match(
+    css,
+    /html:not\(\.dark\):not\(\[data-theme="dark"\]\)\s+#phg-root/u,
+  );
+  assert.match(
+    css,
+    /html:not\(\.light\):not\(\[data-theme="light"\]\)\s+#phg-root/u,
+  );
+  assert.match(
+    css,
+    /\.phg-dialog\s*\{[^}]*width:\s*min\(410px,\s*calc\(100vw - 24px\)\)/su,
+  );
+  assert.match(css, /\.phg-dialog-body\s*\{[^}]*overflow-y:\s*auto/su);
+  assert.match(
+    css,
+    /\.phg-dialog\[data-phg-kind="delete"\][^\{]*\{[^}]*width:/su,
+  );
+  assert.match(
+    css,
+    /\.phg-control:focus-visible\s*\{[^}]*box-shadow:[^;]*,[^;]*;/su,
+  );
+  assert.match(css, /\.phg-history-value\s*\{[^}]*border-radius:\s*999px/su);
+  assert.doesNotMatch(css, /\.phg-panel\s*\{[^}]*filter\s*:/u);
+  assert.doesNotMatch(css, /(^|\})\s*(?:button|input|textarea|\*)\s*\{/mu);
+});
+
+test("card action icons use theme-aware surfaces without the light-theme black block", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+
+  for (const token of [
+    "action-bg",
+    "action-bg-hover",
+    "action-border",
+    "action-icon",
+    "danger-bg",
+    "danger-bg-hover",
+    "danger-border",
+    "danger-icon",
+  ]) {
+    assert.match(css, new RegExp(`--phg-${token}:`, "u"), token);
+  }
+  assert.match(
+    css,
+    /#phg-root\s*\{[^}]*--phg-action-bg:\s*#292a30;[^}]*--phg-danger-icon:\s*#ffaaa7;/su,
+  );
+  assert.match(
+    css,
+    /html\.light\s+#phg-root,\s*html\[data-theme="light"\]\s+#phg-root\s*\{[^}]*--phg-action-bg:\s*#f3f3f5;[^}]*--phg-danger-icon:\s*#b42318;/su,
+  );
+  assert.match(
+    css,
+    /@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*html:not\(\.dark\):not\(\[data-theme="dark"\]\)\s+#phg-root\s*\{[^}]*--phg-action-bg:\s*#f3f3f5;[^}]*--phg-danger-icon:\s*#b42318;/su,
+  );
+  assert.match(
+    css,
+    /\.phg-card-action\s*\{[^}]*background:\s*var\(--phg-action-bg\);[^}]*color:\s*var\(--phg-action-icon\);/su,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.phg-card-action\s*\{[^}]*background:\s*#202126;/su,
+  );
+});
+
+test("both themes provide semantic chrome and shadow tokens", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+  const tokens = [
+    "divider",
+    "header-surface",
+    "footer-surface",
+    "icon-muted",
+    "add-bg",
+    "add-border",
+    "add-icon",
+    "focus-ring",
+    "launcher-shadow",
+    "launcher-shadow-hover",
+    "panel-shadow",
+    "status-shadow",
+    "dialog-shadow",
+  ];
+
+  for (const token of tokens) {
+    assert.match(css, new RegExp(`--phg-${token}:`, "u"), token);
+  }
+  assert.match(
+    css,
+    /#phg-root\s*\{[^}]*--phg-header-surface:\s*#202126;[^}]*--phg-dialog-shadow:/su,
+  );
+  assert.match(
+    css,
+    /html\.light\s+#phg-root,\s*html\[data-theme="light"\]\s+#phg-root\s*\{[^}]*--phg-header-surface:\s*#fbfbfc;[^}]*--phg-dialog-shadow:/su,
+  );
+  assert.match(
+    css,
+    /@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*html:not\(\.dark\):not\(\[data-theme="dark"\]\)\s+#phg-root\s*\{[^}]*--phg-header-surface:\s*#fbfbfc;[^}]*--phg-dialog-shadow:/su,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.phg-panel-header\s*\{[^}]*background:\s*#202126;/su,
+  );
+  assert.doesNotMatch(css, /\.phg-add-arrow\s*\{[^}]*color:\s*#777985;/su);
+  assert.doesNotMatch(css, /\.phg-panel-close\s*\{[^}]*color:\s*#9899a3;/su);
+});
+
+test("light theme variants use a readable danger token", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+  const explicitLight = /html\.light\s+#phg-root,\s*html\[data-theme="light"\]\s+#phg-root\s*\{[^}]*--phg-danger:\s*#b42318;/su;
+  const systemLight = /@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*html:not\(\.dark\):not\(\[data-theme="dark"\]\)\s+#phg-root\s*\{[^}]*--phg-danger:\s*#b42318;/su;
+
+  assert.equal(
+    explicitLight.test(css) && systemLight.test(css),
+    true,
+    "explicit and system light themes must both override --phg-danger",
+  );
+});
+
+test("panel placement controls its origin and closed offset toward the launcher", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+  const expected = [
+    ["above", "center bottom", "0, 16px, 0"],
+    ["below", "center top", "0, -16px, 0"],
+    ["right", "left center", "-16px, 0, 0"],
+    ["left", "right center", "16px, 0, 0"],
+  ];
+
+  for (const [placement, origin, offset] of expected) {
+    const selector = new RegExp(
+      `\\.phg-panel\\[data-phg-placement="${placement}"\\]\\s*\\{[^}]*` +
+        `transform-origin:\\s*${origin};[^}]*` +
+        `transform:\\s*translate3d\\(${offset}\\)\\s*scale\\(\\.955\\);`,
+      "su",
+    );
+    assert.match(css, selector, `${placement} placement must animate toward the launcher`);
+  }
+});
+
+test("coarse pointers receive 44px dialog and history targets", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+  const coarse = css.slice(
+    css.indexOf("@media (hover: none), (pointer: coarse)"),
+    css.indexOf("@media (prefers-reduced-motion: reduce)"),
+  );
+
+  for (const selector of [
+    "#phg-root .phg-dialog .phg-button",
+    "#phg-root .phg-dialog .phg-icon-button",
+    "#phg-root .phg-history-value",
+    "#phg-root .phg-history-delete",
+  ]) {
+    assert.match(
+      coarse,
+      new RegExp(`${selector.replaceAll(".", "\\.")}[^\\{]*\\{[^}]*min-height:\\s*44px;`, "su"),
+      `${selector} must be at least 44px high for coarse pointers`,
+    );
+  }
+  assert.match(
+    coarse,
+    /\.phg-dialog \.phg-icon-button[^\{]*\{[^}]*min-width:\s*44px;/su,
+  );
+  assert.match(
+    coarse,
+    /\.phg-history-delete[^\{]*\{[^}]*min-width:\s*44px;/su,
+  );
+});
+
+test("an open launcher lifts with a glow while active, drag, and reduced motion override it", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+  const openRule = /\.phg-launcher\[aria-expanded="true"\]\s*\{[^}]*transform:\s*translate3d\(0,\s*-2px,\s*0\)\s*scale\(1\.02\);[^}]*box-shadow:/su;
+  const finePointer = css.slice(
+    css.indexOf("@media (hover: hover) and (pointer: fine)"),
+    css.indexOf("@media (hover: none), (pointer: coarse)"),
+  );
+  const reducedMotion = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+
+  assert.match(css, openRule);
+  assert.match(css, /\.phg-launcher\[aria-expanded="true"\]::before\s*\{[^}]*opacity:\s*\.58;/su);
+  assert.match(css, /\.phg-launcher\[data-phg-dragging="true"\][^\{]*\{[^}]*scale\(\.97\)/su);
+  assert.match(
+    finePointer,
+    /\.phg-launcher\[data-phg-dragging="true"\]::before\s*\{[^}]*opacity:\s*\.28;[^}]*scale\(\.84\)/su,
+  );
+  assert.match(reducedMotion, /\.phg-launcher\[aria-expanded="true"\]/u);
+  assert.match(reducedMotion, /\.phg-launcher\[data-phg-dragging="true"\]/u);
+});

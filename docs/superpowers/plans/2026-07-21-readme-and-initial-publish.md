@@ -1,0 +1,321 @@
+# README and Initial Publish Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the maintenance-heavy README with a concise reference-style project homepage, verify the complete extension, and publish the intentional project files to `issacsmit/Prompt_Helper_Extension_for_ChatGPT` on `main`.
+
+**Architecture:** Keep the extension implementation unchanged. Rewrite only `README.md`, then use the existing automated verification suite and Git ignore rules to prove the publishable tree is clean before committing and pushing to the empty target repository.
+
+**Tech Stack:** Chrome Extension Manifest V3, native JavaScript, native CSS, Node.js built-in test runner, Git, GitHub CLI
+
+## Global Constraints
+
+- Use Chinese as the primary README language while preserving necessary Chrome, ChatGPT, Manifest V3, API, file, and command names.
+- Follow the reference repository's concise section order without copying Gemini-only behavior or its `prompt-helper/` directory layout.
+- Do not add badges, screenshots, store-installation instructions, dependencies, permissions, networking, API keys, or a license claim.
+- Load the repository root containing `manifest.json` as the unpacked Chrome extension.
+- Preserve all implemented extension behavior, including local-only storage, no automatic sending, adaptive light/dark themes, icon actions, and the 24 px lower-right default launcher inset.
+- Publish only source, icons, tests, formal documentation, and repository metadata; local agent state and visual feedback remain ignored.
+
+---
+
+### Task 1: Rewrite the public README
+
+**Files:**
+- Modify: `README.md`
+
+**Interfaces:**
+- Consumes: `manifest.json` version/name/permissions/match pattern; `package.json` scripts; production module names; storage keys from `constants.js`
+- Produces: A concise repository homepage with valid install, usage, privacy, development, and internal documentation links
+
+- [ ] **Step 1: Replace `README.md` with the approved reference-style content**
+
+Use this complete content:
+
+````markdown
+# ChatGPT 提示词助手 (Prompt Helper for ChatGPT)
+
+一个 Chrome 扩展（Manifest V3），让你在 ChatGPT 网页版管理并快速插入常用提示词，同时把光标准确定位到占位符位置。
+
+## 特性
+
+- 浮动按钮一键唤出提示词面板，默认位于网页右下角
+- 在当前光标位置插入提示词，不覆盖已有内容，也不自动发送
+- 支持占位符自动定位光标（默认 `【光标】`，兼容 `[光标]`，也可自定义）
+- 提示词支持新增、编辑、删除和本地持久化
+- 浮动按钮支持拖拽，位置自动保存
+- 浅色、深色与系统主题自适应，编辑和删除图标会同步切换颜色
+- 支持 `prefers-reduced-motion` 和键盘操作（Esc 关闭、Tab 焦点循环）
+- 零运行依赖，不联网，不读取 API Key，不上传提示词或聊天内容
+
+## 安装
+
+本扩展暂未上架 Chrome Web Store，需要手动加载：
+
+1. 克隆或下载本仓库：
+
+   ```text
+   git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
+   ```
+
+2. 打开 Chrome，访问 `chrome://extensions/`
+3. 开启右上角的 **开发者模式**
+4. 点击 **加载已解压的扩展程序**
+5. 选择本仓库中包含 `manifest.json` 的根目录
+6. 打开或刷新 [ChatGPT](https://chatgpt.com/)，页面右下角应出现提示词助手浮动按钮
+
+重新加载扩展后，已经打开的 ChatGPT 标签页也需要刷新，否则页面中仍然运行旧版 content script。
+
+## 使用
+
+1. 点击页面右下角的浮动按钮，打开提示词面板
+2. 点击新增入口，填写提示词名称、内容和可选的自定义占位符
+3. 把 ChatGPT 输入框的光标放到目标位置
+4. 点击面板中的提示词卡片，将内容插入当前光标位置
+5. 使用卡片上的铅笔或垃圾桶图标编辑、删除提示词
+6. 按住浮动按钮拖动可调整位置；刷新页面后会恢复保存的位置
+
+### 占位符
+
+- 默认占位符：`【光标】`
+- 兼容旧占位符：`[光标]`
+- 可为每条提示词设置任意自定义字符串，例如 `<继续写>`
+- 插入时只移除第一个命中的占位符，并把光标移动到该位置
+- 最近使用的自定义占位符会自动去重并保留最多 5 条，可点击复用或单独删除
+
+## 技术栈
+
+- Chrome Extension Manifest V3
+- 原生 JavaScript（content script，无构建步骤）
+- 原生 CSS（无框架）
+- Node.js 内置测试器
+
+## 目录结构
+
+```text
+.
+├── manifest.json        # 扩展清单、权限与脚本加载顺序
+├── constants.js         # 常量与存储键
+├── storage.js           # chrome.storage.local 访问与同步
+├── prompt-engine.js     # 占位符匹配与光标位置计算
+├── chatgpt-editor.js    # ChatGPT 输入框定位与插入适配
+├── ui.js                # 面板、对话框、CRUD 与拖拽
+├── content.js           # 初始化、单例与 SPA 生命周期
+├── content.css          # 明暗主题与组件样式
+├── icons/               # 扩展图标（16 / 48 / 128）
+├── tests/               # 自动化测试与本地浏览器 fixture
+├── DEVELOPMENT.md       # 架构和维护说明
+└── TEST_CHECKLIST.md    # 真实页面人工回归清单
+```
+
+## 数据结构
+
+数据存储于 `chrome.storage.local`：
+
+| Key | 说明 |
+| --- | --- |
+| `ph_prompts` | 提示词列表 |
+| `ph_placeholder_history` | 最近使用的自定义占位符，最多 5 条 |
+| `ph_button_pos` | 浮动按钮位置 |
+
+单条提示词示例：
+
+```json
+{
+  "id": "timestamp+random",
+  "name": "用户自定义名称",
+  "prompt": "提示词内容，可含【光标】占位符",
+  "placeholder": "【光标】"
+}
+```
+
+## 隐私与权限
+
+- 扩展只声明 `storage` 权限，只在 `https://chatgpt.com/*` 页面运行
+- 提示词、占位符历史和浮动按钮位置只保存在 Chrome 本地扩展存储中
+- 扩展不发起网络请求，不调用模型服务，也不读取或保存 API Key
+- 扩展不会上传提示词或聊天内容；插入后是否发送始终由用户决定
+- 本项目不隶属于 OpenAI；“ChatGPT”只用于说明适配的网页产品
+
+## 开发
+
+项目无构建步骤、无第三方运行依赖。修改代码后：
+
+1. 在 `chrome://extensions/` 中点击本扩展的 **重新加载**
+2. 刷新已经打开的 ChatGPT 页面
+3. 执行完整自动化验证：
+
+   ```text
+   npm run verify
+   ```
+
+`npm run verify` 会先检查生产与测试 JavaScript 语法，再运行 Node.js 全量测试。项目不需要执行 `npm install`。
+
+更多实现细节见 [DEVELOPMENT.md](DEVELOPMENT.md)，真实 ChatGPT 页面回归步骤见 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)。本地合成页面可通过 `tests/fixtures/chatgpt-composer.html` 验证 CRUD、插入、主题、拖拽和 SPA 重建流程。
+````
+
+- [ ] **Step 2: Review the README diff for reference fidelity and project accuracy**
+
+Run:
+
+```text
+git diff -- README.md
+```
+
+Expected: only `README.md` changes; the result follows the reference section style, names ChatGPT instead of Gemini, selects the repository root during installation, contains no license claim, and links to existing files.
+
+- [ ] **Step 3: Check README formatting and internal links**
+
+Run:
+
+```powershell
+rg -n "待补充|Gemini|prompt-helper/|LICENSE" README.md
+Test-Path DEVELOPMENT.md
+Test-Path TEST_CHECKLIST.md
+Test-Path tests/fixtures/chatgpt-composer.html
+```
+
+Expected: `rg` returns no matches and exits 1; each `Test-Path` prints `True`.
+
+- [ ] **Step 4: Commit the README rewrite**
+
+Run:
+
+```text
+git add -- README.md
+git commit -m "docs: rewrite README for public release"
+```
+
+Expected: one commit is created containing only `README.md`.
+
+### Task 2: Verify publish scope and extension behavior
+
+**Files:**
+- Modify: none
+- Verify: `.gitignore`, `manifest.json`, `package.json`, all production and test JavaScript files
+
+**Interfaces:**
+- Consumes: `.gitignore` patterns and `npm run verify`
+- Produces: Evidence that local artifacts are excluded and the publishable extension passes syntax and behavior tests
+
+- [ ] **Step 1: Confirm local-only artifacts are ignored**
+
+Run:
+
+```text
+git check-ignore -v .superpowers/brainstorm/.last-token .superpowers/brainstorm/.last-port 反馈 .agents .codex
+git status --short --ignored
+```
+
+Expected: the listed local paths match `.gitignore`; `.superpowers/`, `反馈/`, `.agents/`, and `.codex/` appear with `!!` if present, while source, icons, tests, README, and formal `docs/superpowers/` documents remain publishable.
+
+- [ ] **Step 2: Run the complete extension verification**
+
+Run:
+
+```text
+npm run verify
+```
+
+Expected: every `node --check` command exits 0 and the Node test summary reports 95 passed, 0 failed.
+
+- [ ] **Step 3: Check the complete unstaged and untracked scope**
+
+Run:
+
+```text
+git status --short
+git diff --check
+```
+
+Expected: only intentional source, icons, tests, docs, `.gitignore`, and README are untracked/modified; `git diff --check` exits 0.
+
+### Task 3: Commit the project locally
+
+**Files:**
+- Stage: `.gitignore`, `DEVELOPMENT.md`, `README.md`, `TEST_CHECKLIST.md`, `chatgpt-editor.js`, `constants.js`, `content.css`, `content.js`, `docs/`, `icons/`, `manifest.json`, `package.json`, `prompt-engine.js`, `storage.js`, `tests/`, `ui.js`
+- Remote: `https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git`
+
+**Interfaces:**
+- Consumes: verified publishable working tree from Task 2 and existing local `main` history
+- Produces: a clean, fully reviewed local `main` commit ready for publication to the target GitHub repository
+
+- [ ] **Step 1: Stage the full intentional project**
+
+Run:
+
+```text
+git add -A
+git status --short
+```
+
+Expected: all intentional files are staged; ignored local artifacts do not appear.
+
+- [ ] **Step 2: Review the staged payload**
+
+Run:
+
+```text
+git diff --cached --check
+git diff --cached --stat
+git diff --cached --name-only
+```
+
+Expected: whitespace check exits 0; the file list contains no `.superpowers/`, `.agents/`, `.codex/`, `反馈/`, credentials, logs, PID files, build output, coverage, or dependency directories.
+
+- [ ] **Step 3: Commit the verified project**
+
+Run:
+
+```text
+git commit -m "feat: publish ChatGPT prompt helper"
+```
+
+Expected: commit succeeds on `main` and includes the complete extension, tests, README, `.gitignore`, and formal documentation.
+
+- [ ] **Step 4: Add and verify the target remote**
+
+Run:
+
+```text
+git remote add origin https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
+git remote -v
+```
+
+Expected: `origin` fetch and push URLs both point to `issacsmit/Prompt_Helper_Extension_for_ChatGPT.git`.
+
+- [ ] **Step 5: Verify the local commit state**
+
+Run:
+
+```text
+git status --short --branch
+git rev-parse --short HEAD
+```
+
+Expected: the working tree is clean and Git prints the final local short commit ID.
+
+## Post-review publication
+
+After the Task 3 review and the broad whole-branch review both approve the local history, the controller performs the authorized publication.
+
+- [ ] **Step 1: Push the reviewed `main` branch**
+
+Run:
+
+```text
+git push -u origin main
+```
+
+Expected: the push creates `origin/main` and local `main` becomes its upstream branch.
+
+- [ ] **Step 2: Verify the published state**
+
+Run:
+
+```text
+git status --short --branch
+gh repo view issacsmit/Prompt_Helper_Extension_for_ChatGPT --json url,defaultBranchRef,viewerPermission,visibility
+```
+
+Expected: the working tree is clean, `main` tracks `origin/main`, and GitHub reports the public repository with `main` as its default branch and `ADMIN` viewer permission.

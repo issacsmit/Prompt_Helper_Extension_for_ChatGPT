@@ -1,0 +1,11 @@
+{
+  "name": "prompt-helper-gpt",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test --test-isolation=none",
+    "check": "node --check constants.js && node --check storage.js && node --check prompt-engine.js && node --check chatgpt-editor.js && node --check ui.js && node --check content.js && node --check tests/prompt-engine.test.js && node --check tests/storage.test.js && node --check tests/chatgpt-editor.test.js && node --check tests/ui.test.js && node --check tests/controller.test.js && node --check tests/manifest.test.js && node --check tests/static-guard.test.js && node --check tests/file-integrity.test.js && node --check tests/fixtures/chrome-storage-mock.js && node --check tests/fixtures/chatgpt-composer-fixture.js",
+    "verify": "npm run check && npm test"
+  }
+}
