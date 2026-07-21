@@ -883,7 +883,7 @@
         height: buttonRect.height || 52,
       };
       this._buttonPosition = clampFloatingPosition(
-        this._state.buttonPosition || this._buttonPosition,
+        this._state.buttonPosition,
         viewportSize(this._window, this._document),
         buttonSize,
         12,
@@ -1299,8 +1299,10 @@
       if (action === "insert") {
         void this._controller?.insertPrompt?.(id);
       } else if (action === "edit") {
+        event.stopPropagation();
         this.openPromptDialog(record, actionButton);
       } else if (action === "delete") {
+        event.stopPropagation();
         this.openDeleteDialog(record, actionButton);
       }
     }

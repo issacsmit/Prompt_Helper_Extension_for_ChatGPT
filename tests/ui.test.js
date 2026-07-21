@@ -674,6 +674,28 @@ test("panel positioning uses untransformed layout size during its opening transi
   );
 });
 
+test("render restores the default launcher position when stored position is cleared", () => {
+  const { ui, documentObject, windowObject } = mountUi();
+  const launcher = documentObject.getElementById("phg-launcher");
+  windowObject.innerWidth = 900;
+  windowObject.innerHeight = 700;
+
+  ui.render({
+    ...emptyState,
+    buttonPosition: { left: 120, top: 160 },
+  });
+  assert.deepEqual(
+    { left: launcher.style.left, top: launcher.style.top },
+    { left: "120px", top: "160px" },
+  );
+
+  ui.render({ ...emptyState, buttonPosition: null });
+  assert.deepEqual(
+    { left: launcher.style.left, top: launcher.style.top },
+    { left: "826px", top: "624px" },
+  );
+});
+
 test("render shows empty state or accessible prompt cards and dispatches CRUD actions", async () => {
   const { ui, controller, documentObject } = mountUi();
   ui.render(emptyState);
@@ -741,6 +763,40 @@ test("render shows empty state or accessible prompt cards and dispatches CRUD ac
   documentObject.getElementById("phg-confirm-delete").click();
   await flushTasks();
   assert.deepEqual(controller.deleteCalls, ["one"]);
+});
+
+test("edit and delete card actions stop bubbling without invoking insertion", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render({
+    ...emptyState,
+    prompts: [{ id: "one", name: "Review", prompt: "Inspect this" }],
+  });
+  const bubbledActions = [];
+  documentObject.body.addEventListener("click", (event) => {
+    bubbledActions.push(
+      event.target?.closest?.("[data-phg-action]")?.getAttribute("data-phg-action"),
+    );
+  });
+
+  const insertEvent = new FakeEvent("click", { bubbles: true });
+  documentObject
+    .querySelector('[data-phg-action="insert"]')
+    .dispatchEvent(insertEvent);
+  await flushTasks();
+  assert.equal(insertEvent.propagationStopped, false);
+  assert.deepEqual(bubbledActions, ["insert"]);
+  assert.deepEqual(controller.insertCalls, ["one"]);
+
+  for (const action of ["edit", "delete"]) {
+    const event = new FakeEvent("click", { bubbles: true });
+    documentObject
+      .querySelector(`[data-phg-action="${action}"]`)
+      .dispatchEvent(event);
+    assert.equal(event.propagationStopped, true, `${action} must stop propagation`);
+    assert.deepEqual(bubbledActions, ["insert"], `${action} must not bubble to body`);
+    assert.deepEqual(controller.insertCalls, ["one"], `${action} must not insert`);
+    ui.closeDialog({ restoreFocus: false });
+  }
 });
 
 test("add/edit dialog uses defaults, history actions, retry retention, and focus restore", async () => {
@@ -982,8 +1038,8 @@ test("content stylesheet encodes Quiet Orbit visuals and interaction states", ()
 
   assert.match(css, /--phg-panel:\s*#1f2024/u);
   assert.match(css, /--phg-card:\s*#232429/u);
-  assert.match(css, /--phg-accent-start:\s*#6c79f4/u);
-  assert.match(css, /--phg-accent-end:\s*#8a5dda/u);
+  assert.match(css, /--phg-accent-start:\s*#5663dc/u);
+  assert.match(css, /--phg-accent-end:\s*#754ac4/u);
   assert.match(css, /linear-gradient\(145deg,\s*var\(--phg-accent-start\)/u);
   assert.match(
     css,
@@ -1047,6 +1103,61 @@ test("content stylesheet encodes Quiet Orbit visuals and interaction states", ()
   assert.match(css, /\.phg-history-value\s*\{[^}]*border-radius:\s*999px/su);
   assert.doesNotMatch(css, /\.phg-panel\s*\{[^}]*filter\s*:/u);
   assert.doesNotMatch(css, /(^|\})\s*(?:button|input|textarea|\*)\s*\{/mu);
+});
+
+test("explicit theme cascade keeps dark tokens when markers conflict", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+  const explicitThemeRule =
+    /(html\.(?:dark|light)\s+#phg-root,\s*html\[data-theme="(?:dark|light)"\]\s+#phg-root)\s*\{([^}]*)\}/gu;
+  const conflictMatches = (selectorList) =>
+    selectorList.includes("html.dark #phg-root") ||
+    selectorList.includes('html[data-theme="light"] #phg-root');
+  const resolvedTokens = {};
+
+  for (const match of css.matchAll(explicitThemeRule)) {
+    if (!conflictMatches(match[1])) {
+      continue;
+    }
+    for (const declaration of match[2].matchAll(/(--phg-[\w-]+):\s*([^;]+);/gu)) {
+      resolvedTokens[declaration[1]] = declaration[2].trim();
+    }
+  }
+
+  assert.equal(
+    resolvedTokens["--phg-page"],
+    "#18191c",
+    "dark must win when html.dark conflicts with data-theme=light",
+  );
+});
+
+test("primary button gradient tokens meet WCAG contrast with white text", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+  const rootTokens = /#phg-root\s*\{([^}]*)\}/u.exec(css)?.[1] || "";
+  const relativeLuminance = (hexColor) => {
+    const channels = hexColor
+      .slice(1)
+      .match(/.{2}/gu)
+      .map((channel) => Number.parseInt(channel, 16) / 255)
+      .map((channel) =>
+        channel <= 0.04045
+          ? channel / 12.92
+          : ((channel + 0.055) / 1.055) ** 2.4,
+      );
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  };
+  const whiteLuminance = relativeLuminance("#ffffff");
+
+  for (const token of ["accent-start", "accent-mid", "accent-end"]) {
+    const value = new RegExp(`--phg-${token}:\\s*(#[0-9a-f]{6});`, "iu").exec(
+      rootTokens,
+    )?.[1];
+    assert.ok(value, `--phg-${token} must be a six-digit hex color`);
+    const contrast = (whiteLuminance + 0.05) / (relativeLuminance(value) + 0.05);
+    assert.ok(
+      contrast >= 4.5,
+      `--phg-${token} ${value} has ${contrast.toFixed(2)}:1 contrast with white`,
+    );
+  }
 });
 
 test("card action icons use theme-aware surfaces without the light-theme black block", () => {
@@ -1125,6 +1236,21 @@ test("both themes provide semantic chrome and shadow tokens", () => {
   );
   assert.doesNotMatch(css, /\.phg-add-arrow\s*\{[^}]*color:\s*#777985;/su);
   assert.doesNotMatch(css, /\.phg-panel-close\s*\{[^}]*color:\s*#9899a3;/su);
+});
+
+test("control focus styling derives its border and shadows from the focus token", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "content.css"), "utf8");
+  const focusRule = /#phg-root \.phg-control:focus-visible\s*\{([^}]*)\}/u.exec(
+    css,
+  )?.[1];
+
+  assert.ok(focusRule, "control focus rule must exist");
+  assert.match(focusRule, /border-color:[^;]*var\(--phg-focus-ring\)[^;]*;/u);
+  assert.match(
+    focusRule,
+    /box-shadow:[^;]*var\(--phg-focus-ring\)[^;]*var\(--phg-focus-ring\)[^;]*;/su,
+  );
+  assert.doesNotMatch(focusRule, /rgb\(/u);
 });
 
 test("light theme variants use a readable danger token", () => {

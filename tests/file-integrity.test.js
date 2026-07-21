@@ -319,6 +319,20 @@ test("Chinese documentation covers product boundaries, architecture, and manual 
   assert.match(checklist, /只有一个蓝紫色“提示框 \+ 光标”浮动入口/u);
 });
 
+test("historical launcher design declares the later visual design as superseding it", () => {
+  const historicalDesign = readRequired(
+    "docs/superpowers/specs/2026-07-15-quiet-orbit-ui-design.md",
+  );
+
+  assert.match(historicalDesign, /Superseded launcher visuals/u);
+  assert.match(
+    historicalDesign,
+    /2026-07-21-adaptive-actions-themes-position-design\.md/u,
+  );
+  assert.match(historicalDesign, /50x52 px rounded-rectangle/u);
+  assert.match(historicalDesign, /without a `P` badge/u);
+});
+
 test("package scripts run the complete isolated suite and node --check every JavaScript file", () => {
   const packageJson = JSON.parse(readRequired("package.json"));
 

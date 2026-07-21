@@ -1,5 +1,9 @@
 # ChatGPT 提示词助手「静默轨道」UI 改版设计
 
+> **Superseded launcher visuals:**
+> [2026-07-21-adaptive-actions-themes-position-design.md](2026-07-21-adaptive-actions-themes-position-design.md)
+> replaces this document's launcher visuals. The approved launcher is a 50x52 px rounded-rectangle prompt/caret/pointer mark without a `P` badge. The rest of this document remains historical design context.
+
 日期：2026-07-15
 
 状态：用户已批准
