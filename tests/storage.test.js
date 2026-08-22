@@ -28,6 +28,7 @@ const KEYS = Object.freeze({
   PROMPTS: "ph_prompts",
   PLACEHOLDER_HISTORY: "ph_placeholder_history",
   BUTTON_POSITION: "ph_button_pos",
+  AUTO_SELECT_BRACKET_PLACEHOLDER: "ph_auto_select_bracket_placeholder",
 });
 
 function clone(value) {
@@ -173,11 +174,13 @@ test("storage instances expose load, save, and subscription methods", () => {
   assert.equal(typeof storage.load, "function");
   assert.equal(typeof storage.savePrompts, "function");
   assert.equal(typeof storage.saveButtonPosition, "function");
+  assert.equal(typeof storage.saveAutoSelectBracketPlaceholder, "function");
   assert.equal(typeof storage.subscribe, "function");
 });
 
-test("constants preserve storage key names and the three-second timeout", () => {
+test("constants preserve storage key names, defaults, and the three-second timeout", () => {
   assert.deepEqual(constants.STORAGE_KEYS, KEYS);
+  assert.equal(constants.DEFAULT_AUTO_SELECT_BRACKET_PLACEHOLDER, true);
   assert.equal(constants.STORAGE_TIMEOUT_MS, 3000);
 });
 
@@ -189,6 +192,7 @@ test("load returns safe defaults for missing values through the callback API", a
     prompts: [],
     placeholderHistory: [],
     buttonPosition: null,
+    autoSelectBracketPlaceholder: true,
   });
 });
 
@@ -228,6 +232,7 @@ test("load normalizes valid data and filters corrupt records, history, and coord
       "<sixth>",
     ],
     [KEYS.BUTTON_POSITION]: { left: 12.5, top: 24, extra: true },
+    [KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]: false,
   });
   const storage = new Storage(fake.chromeApi);
 
@@ -248,6 +253,7 @@ test("load normalizes valid data and filters corrupt records, history, and coord
     ],
     placeholderHistory: ["<old>", "<second>", "<third>", "<fourth>", "<fifth>"],
     buttonPosition: { left: 12.5, top: 24 },
+    autoSelectBracketPlaceholder: false,
   });
 });
 
@@ -256,6 +262,7 @@ test("load rejects invalid coordinate shapes while preserving other safe fallbac
     [KEYS.PROMPTS]: { not: "an array" },
     [KEYS.PLACEHOLDER_HISTORY]: "not an array",
     [KEYS.BUTTON_POSITION]: { left: -1, top: Number.NaN },
+    [KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]: "not a boolean",
   });
   const storage = new Storage(fake.chromeApi);
 
@@ -263,12 +270,14 @@ test("load rejects invalid coordinate shapes while preserving other safe fallbac
     prompts: [],
     placeholderHistory: [],
     buttonPosition: null,
+    autoSelectBracketPlaceholder: true,
   });
 });
 
 test("Promise-based Chrome storage is supported for reads and writes", async () => {
   const fake = createPromiseChrome({
     [KEYS.BUTTON_POSITION]: { left: 2, top: 3 },
+    [KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]: false,
   });
   const storage = new Storage(fake.chromeApi);
 
@@ -276,6 +285,7 @@ test("Promise-based Chrome storage is supported for reads and writes", async () 
     prompts: [],
     placeholderHistory: [],
     buttonPosition: { left: 2, top: 3 },
+    autoSelectBracketPlaceholder: false,
   });
   assert.deepEqual(await storage.saveButtonPosition({ left: 8, top: 13 }), {
     rollbackSnapshot: { buttonPosition: { left: 2, top: 3 } },
@@ -434,6 +444,25 @@ test("saveButtonPosition accepts left/top or null and rejects invalid positions"
   ]);
 });
 
+test("saveAutoSelectBracketPlaceholder persists a boolean with rollback state", async () => {
+  const fake = createCallbackChrome({
+    [KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]: false,
+  });
+  const storage = new Storage(fake.chromeApi);
+  await storage.load();
+
+  assert.deepEqual(await storage.saveAutoSelectBracketPlaceholder(true), {
+    rollbackSnapshot: { autoSelectBracketPlaceholder: false },
+  });
+  assert.deepEqual(fake.setCalls, [
+    { [KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]: true },
+  ]);
+  const error = await captureRejection(() =>
+    storage.saveAutoSelectBracketPlaceholder("yes"),
+  );
+  assert.equal(error.name, "TypeError");
+});
+
 test("missing and invalidated extension contexts use one normalized error", async () => {
   const missingError = await captureRejection(() => new Storage(null).load());
   const fake = createCallbackChrome();
@@ -477,4 +506,22 @@ test("subscribe relays relevant local changes and returned cleanup removes the l
   assert.equal(fake.changeEvent.listeners.size, 0);
   fake.changeEvent.emit(relevantChanges, "local");
   assert.equal(observed.length, 1);
+});
+
+test("subscribe treats the bracket auto-selection setting as relevant", () => {
+  const fake = createCallbackChrome();
+  const storage = new Storage(fake.chromeApi);
+  const observed = [];
+  const unsubscribe = storage.subscribe((changes) => observed.push(changes));
+  const changes = {
+    [KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]: {
+      oldValue: true,
+      newValue: false,
+    },
+  };
+
+  fake.changeEvent.emit(changes, "local");
+
+  assert.deepEqual(observed, [changes]);
+  unsubscribe();
 });

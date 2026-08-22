@@ -430,7 +430,7 @@
     return null;
   }
 
-  function placeSelection(documentObject, windowObject, point) {
+  function placeSelection(documentObject, windowObject, startPoint, endPoint) {
     if (!documentObject || typeof documentObject.createRange !== "function") {
       return null;
     }
@@ -439,8 +439,12 @@
       return null;
     }
     const range = documentObject.createRange();
-    range.setStart(point.container, point.offset);
-    range.collapse(true);
+    range.setStart(startPoint.container, startPoint.offset);
+    if (endPoint && typeof range.setEnd === "function") {
+      range.setEnd(endPoint.container, endPoint.offset);
+    } else {
+      range.collapse(true);
+    }
     selection.removeAllRanges();
     selection.addRange(range);
     return range;
@@ -527,7 +531,7 @@
       return { ...this._bookmark };
     }
 
-    insert(text, caretOffset) {
+    insert(text, caretOffset, selectionEndOffset) {
       const editor = this.rebind();
       if (!editor) {
         return { ok: false, code: "EDITOR_NOT_FOUND" };
@@ -537,13 +541,23 @@
       }
 
       const insertionResult = isTextarea(editor)
-        ? this._insertIntoTextarea(editor, text, caretOffset)
-        : this._insertIntoContenteditable(editor, text, caretOffset);
+        ? this._insertIntoTextarea(
+            editor,
+            text,
+            caretOffset,
+            selectionEndOffset,
+          )
+        : this._insertIntoContenteditable(
+            editor,
+            text,
+            caretOffset,
+            selectionEndOffset,
+          );
 
       return insertionResult;
     }
 
-    _insertIntoTextarea(editor, text, caretOffset) {
+    _insertIntoTextarea(editor, text, caretOffset, selectionEndOffset) {
       const before = typeof editor.value === "string" ? editor.value : "";
       const insertionStart = Math.trunc(
         clamp(this._bookmark?.offset ?? before.length, 0, before.length),
@@ -567,12 +581,19 @@
         text.slice(0, sourceCaretOffset),
       ).length;
       const caretPosition = insertionStart + relativeCaretOffset;
+      const sourceSelectionEndOffset = Math.trunc(
+        clamp(selectionEndOffset, sourceCaretOffset, text.length),
+      );
+      const relativeSelectionEndOffset = normalizeTextareaValue(
+        text.slice(0, sourceSelectionEndOffset),
+      ).length;
+      const selectionEndPosition = insertionStart + relativeSelectionEndOffset;
       focusEditor(editor);
       if (typeof editor.setSelectionRange === "function") {
-        editor.setSelectionRange(caretPosition, caretPosition);
+        editor.setSelectionRange(caretPosition, selectionEndPosition);
       } else {
         editor.selectionStart = caretPosition;
-        editor.selectionEnd = caretPosition;
+        editor.selectionEnd = selectionEndPosition;
       }
       editor.dispatchEvent(createInputEvent(this._window, normalizedText));
       this._bookmark = { editor, kind: "textarea", offset: caretPosition };
@@ -585,7 +606,7 @@
       };
     }
 
-    _insertIntoContenteditable(editor, text, caretOffset) {
+    _insertIntoContenteditable(editor, text, caretOffset, selectionEndOffset) {
       const beforeModel = createTextModel(editor);
       const before = beforeModel.text;
       const insertionStart = Math.trunc(
@@ -631,9 +652,24 @@
 
       const relativeCaretOffset = Math.trunc(clamp(caretOffset, 0, text.length));
       const caretPosition = insertionStart + relativeCaretOffset;
+      const relativeSelectionEndOffset = Math.trunc(
+        clamp(selectionEndOffset, relativeCaretOffset, text.length),
+      );
+      const selectionEndPosition = insertionStart + relativeSelectionEndOffset;
       const caretPoint = afterModel.pointAt(caretPosition, bookmarkAffinity);
+      const selectionEndPoint = afterModel.pointAt(
+        selectionEndPosition,
+        bookmarkAffinity,
+      );
       focusEditor(editor);
-      if (!placeSelection(this._document, this._window, caretPoint)) {
+      if (
+        !placeSelection(
+          this._document,
+          this._window,
+          caretPoint,
+          selectionEndPoint,
+        )
+      ) {
         return { ok: false, code: "INSERTION_FAILED" };
       }
       editor.dispatchEvent(createInputEvent(this._window, text));

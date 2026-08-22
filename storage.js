@@ -9,12 +9,15 @@
   const DEFAULT_PLACEHOLDER = constants.DEFAULT_PLACEHOLDER || "【光标】";
   const LEGACY_PLACEHOLDER = constants.LEGACY_PLACEHOLDER || "[光标]";
   const MAX_PLACEHOLDER_HISTORY = constants.MAX_PLACEHOLDER_HISTORY || 5;
+  const DEFAULT_AUTO_SELECT_BRACKET_PLACEHOLDER =
+    constants.DEFAULT_AUTO_SELECT_BRACKET_PLACEHOLDER !== false;
   const STORAGE_KEYS =
     constants.STORAGE_KEYS ||
     Object.freeze({
       PROMPTS: "ph_prompts",
       PLACEHOLDER_HISTORY: "ph_placeholder_history",
       BUTTON_POSITION: "ph_button_pos",
+      AUTO_SELECT_BRACKET_PLACEHOLDER: "ph_auto_select_bracket_placeholder",
     });
   const STORAGE_TIMEOUT_MS = constants.STORAGE_TIMEOUT_MS || 3000;
   const CONTEXT_INVALID_MESSAGE =
@@ -115,7 +118,12 @@
   }
 
   function createEmptyState() {
-    return { prompts: [], placeholderHistory: [], buttonPosition: null };
+    return {
+      prompts: [],
+      placeholderHistory: [],
+      buttonPosition: null,
+      autoSelectBracketPlaceholder: DEFAULT_AUTO_SELECT_BRACKET_PLACEHOLDER,
+    };
   }
 
   function clonePrompts(prompts) {
@@ -131,6 +139,7 @@
       prompts: clonePrompts(state.prompts),
       placeholderHistory: [...state.placeholderHistory],
       buttonPosition: cloneButtonPosition(state.buttonPosition),
+      autoSelectBracketPlaceholder: state.autoSelectBracketPlaceholder !== false,
     };
   }
 
@@ -144,6 +153,10 @@
       buttonPosition: normalizeButtonPosition(
         source[STORAGE_KEYS.BUTTON_POSITION],
       ),
+      autoSelectBracketPlaceholder:
+        typeof source[STORAGE_KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER] === "boolean"
+          ? source[STORAGE_KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]
+          : DEFAULT_AUTO_SELECT_BRACKET_PLACEHOLDER,
     };
   }
 
@@ -251,6 +264,30 @@
       return { rollbackSnapshot };
     }
 
+    async saveAutoSelectBracketPlaceholder(enabled) {
+      if (typeof enabled !== "boolean") {
+        throw new TypeError("Auto-select bracket placeholder setting must be boolean.");
+      }
+      const rollbackSnapshot = {
+        autoSelectBracketPlaceholder: this._state.autoSelectBracketPlaceholder,
+      };
+
+      try {
+        await this._callStorage("set", {
+          [STORAGE_KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]: enabled,
+        });
+      } catch (error) {
+        error.rollbackSnapshot = rollbackSnapshot;
+        throw error;
+      }
+
+      this._state = {
+        ...this._state,
+        autoSelectBracketPlaceholder: enabled,
+      };
+      return { rollbackSnapshot };
+    }
+
     subscribe(listener) {
       if (typeof listener !== "function") {
         throw new TypeError("Storage change listener must be a function.");
@@ -302,6 +339,20 @@
           this._state.buttonPosition = normalizeButtonPosition(
             changes[STORAGE_KEYS.BUTTON_POSITION]?.newValue,
           );
+          relevant = true;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            changes,
+            STORAGE_KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER,
+          )
+        ) {
+          const nextValue =
+            changes[STORAGE_KEYS.AUTO_SELECT_BRACKET_PLACEHOLDER]?.newValue;
+          this._state.autoSelectBracketPlaceholder =
+            typeof nextValue === "boolean"
+              ? nextValue
+              : DEFAULT_AUTO_SELECT_BRACKET_PLACEHOLDER;
           relevant = true;
         }
 

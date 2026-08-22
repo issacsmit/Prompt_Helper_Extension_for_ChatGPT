@@ -9,6 +9,7 @@
   const DEFAULT_PLACEHOLDER = constants.DEFAULT_PLACEHOLDER || "【光标】";
   const LEGACY_PLACEHOLDER = constants.LEGACY_PLACEHOLDER || "[光标]";
   const MAX_PLACEHOLDER_HISTORY = constants.MAX_PLACEHOLDER_HISTORY || 5;
+  const BRACKET_PLACEHOLDER_PATTERN = /【[\s\S]*?】/u;
 
   function normalizePlaceholder(value) {
     if (typeof value !== "string") {
@@ -51,39 +52,68 @@
     return normalized;
   }
 
-  function prepareInsertion(record, history) {
+  function removeFirstPlaceholder(text, placeholder) {
+    if (!placeholder) {
+      return null;
+    }
+    const caretOffset = text.indexOf(placeholder);
+    if (caretOffset === -1) {
+      return null;
+    }
+    return {
+      text:
+        text.slice(0, caretOffset) +
+        text.slice(caretOffset + placeholder.length),
+      caretOffset,
+      matchedPlaceholder: placeholder,
+    };
+  }
+
+  function prepareInsertion(record, history, options = {}) {
     const text = record && typeof record.prompt === "string" ? record.prompt : "";
     const recordPlaceholder = normalizePlaceholder(record?.placeholder);
-    const candidates = [];
+    const priorityCandidates = [];
 
     if (isCustomPlaceholder(recordPlaceholder)) {
-      candidates.push(recordPlaceholder);
+      priorityCandidates.push(recordPlaceholder);
     }
-    candidates.push(
-      DEFAULT_PLACEHOLDER,
-      LEGACY_PLACEHOLDER,
-      ...normalizeHistory(history),
-    );
+    priorityCandidates.push(DEFAULT_PLACEHOLDER, LEGACY_PLACEHOLDER);
 
     const seen = new Set();
-    for (const placeholder of candidates) {
+    for (const placeholder of priorityCandidates) {
       if (seen.has(placeholder)) {
         continue;
       }
       seen.add(placeholder);
+      const prepared = removeFirstPlaceholder(text, placeholder);
+      if (prepared) {
+        return prepared;
+      }
+    }
 
-      const caretOffset = text.indexOf(placeholder);
-      if (caretOffset === -1) {
+    if (options.autoSelectBracketPlaceholder !== false) {
+      const bracketMatch = BRACKET_PLACEHOLDER_PATTERN.exec(text);
+      if (bracketMatch) {
+        const caretOffset = bracketMatch.index;
+        const matchedPlaceholder = bracketMatch[0];
+        return {
+          text,
+          caretOffset,
+          selectionEndOffset: caretOffset + matchedPlaceholder.length,
+          matchedPlaceholder,
+        };
+      }
+    }
+
+    for (const placeholder of normalizeHistory(history)) {
+      if (seen.has(placeholder)) {
         continue;
       }
-
-      return {
-        text:
-          text.slice(0, caretOffset) +
-          text.slice(caretOffset + placeholder.length),
-        caretOffset,
-        matchedPlaceholder: placeholder,
-      };
+      seen.add(placeholder);
+      const prepared = removeFirstPlaceholder(text, placeholder);
+      if (prepared) {
+        return prepared;
+      }
     }
 
     return {

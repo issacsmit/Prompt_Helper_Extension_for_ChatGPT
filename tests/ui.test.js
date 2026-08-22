@@ -520,8 +520,10 @@ function createControllerStub() {
     deleteCalls: [],
     historyDeleteCalls: [],
     positionCalls: [],
+    settingCalls: [],
     nextSaveResult: { ok: true },
     nextDeleteResult: { ok: true },
+    nextSettingResult: { ok: true },
     captureBookmark() {
       this.bookmarkCalls += 1;
       return { offset: 2 };
@@ -545,6 +547,10 @@ function createControllerStub() {
     async saveButtonPosition(position) {
       this.positionCalls.push(cloneValue(position));
       return { ok: true };
+    },
+    async setAutoSelectBracketPlaceholder(enabled) {
+      this.settingCalls.push(enabled);
+      return this.nextSettingResult;
     },
   };
 }
@@ -572,6 +578,7 @@ const emptyState = Object.freeze({
   prompts: [],
   placeholderHistory: [],
   buttonPosition: null,
+  autoSelectBracketPlaceholder: true,
   loading: false,
   busy: false,
 });
@@ -629,6 +636,7 @@ test("PromptHelperUI mounts the Quiet Orbit launcher and three-part panel", () =
   assert.ok(panel.querySelector(".phg-panel-body"));
   assert.ok(panel.querySelector(".phg-panel-footer"));
   assert.ok(documentObject.getElementById("phg-add-prompt"));
+  assert.ok(documentObject.getElementById("phg-open-settings"));
 
   ui.openPanel();
   assert.equal(panel.getAttribute("data-phg-state"), "open");
@@ -823,6 +831,7 @@ test("add/edit dialog uses defaults, history actions, retry retention, and focus
   assert.equal(placeholder.value, "【光标】");
   assert.equal(documentObject.activeElement, name);
   assert.equal(documentObject.querySelectorAll(".phg-history-row").length, 2);
+  assert.match(dialog.querySelector(".phg-field-help").textContent, /优先/u);
 
   documentObject.querySelector('[data-phg-history-value="<最近>"]').click();
   assert.equal(placeholder.value, "<最近>");
@@ -853,6 +862,47 @@ test("add/edit dialog uses defaults, history actions, retry retention, and focus
   await flushTasks();
   assert.equal(documentObject.getElementById("phg-dialog-layer"), null);
   assert.equal(documentObject.activeElement, addButton);
+});
+
+test("settings dialog explains precedence and persists the bracket selection switch", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render({
+    ...emptyState,
+    autoSelectBracketPlaceholder: false,
+  });
+  ui.openPanel();
+  const settingsButton = documentObject.getElementById("phg-open-settings");
+  settingsButton.focus();
+  settingsButton.click();
+
+  const dialog = documentObject.getElementById("phg-dialog");
+  const checkbox = documentObject.getElementById(
+    "phg-auto-select-bracket-placeholder",
+  );
+  assert.equal(dialog.getAttribute("data-phg-kind"), "settings");
+  assert.equal(checkbox.getAttribute("role"), "switch");
+  assert.equal(checkbox.checked, false);
+  assert.equal(documentObject.activeElement, checkbox);
+  assert.match(dialog.querySelector(".phg-setting-note").textContent, /自定义光标/u);
+  assert.match(dialog.querySelector(".phg-setting-note").textContent, /第一处【…】/u);
+
+  checkbox.checked = true;
+  controller.nextSettingResult = { ok: false, code: "SAVE_FAILED" };
+  documentObject.getElementById("phg-settings-form").dispatchEvent(
+    new FakeEvent("submit", { bubbles: true }),
+  );
+  await flushTasks();
+  assert.deepEqual(controller.settingCalls, [true]);
+  assert.ok(documentObject.getElementById("phg-dialog-layer"));
+
+  controller.nextSettingResult = { ok: true };
+  documentObject.getElementById("phg-settings-form").dispatchEvent(
+    new FakeEvent("submit", { bubbles: true }),
+  );
+  await flushTasks();
+  assert.deepEqual(controller.settingCalls, [true, true]);
+  assert.equal(documentObject.getElementById("phg-dialog-layer"), null);
+  assert.equal(documentObject.activeElement, settingsButton);
 });
 
 test("dialogs trap focus, Escape closes by layer, and status is visibly announced", () => {
@@ -1078,6 +1128,9 @@ test("content stylesheet encodes Quiet Orbit visuals and interaction states", ()
   assert.match(css, /\.phg-dialog-body/u);
   assert.match(css, /\.phg-dialog-footer/u);
   assert.match(css, /\.phg-history-row/u);
+  assert.match(css, /\.phg-panel-settings/u);
+  assert.match(css, /\.phg-switch-input:checked \+ \.phg-switch-track/u);
+  assert.match(css, /\.phg-switch-input:focus-visible \+ \.phg-switch-track/u);
   assert.match(css, /\.phg-status\[data-phg-kind="error"\]/u);
   assert.match(
     css,

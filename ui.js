@@ -162,6 +162,8 @@
       buttonPosition: state?.buttonPosition
         ? { ...state.buttonPosition }
         : null,
+      autoSelectBracketPlaceholder:
+        state?.autoSelectBracketPlaceholder !== false,
       loading: Boolean(state?.loading),
       busy: Boolean(state?.busy),
     };
@@ -190,6 +192,7 @@
         prompts: [],
         placeholderHistory: [],
         buttonPosition: null,
+        autoSelectBracketPlaceholder: true,
         loading: false,
         busy: false,
       };
@@ -227,6 +230,7 @@
           prompts: [],
           placeholderHistory: [],
           buttonPosition: null,
+          autoSelectBracketPlaceholder: true,
           loading: false,
           busy: false,
         };
@@ -348,9 +352,17 @@
         const prepared = this._prepareInsertion(
           { ...record },
           [...this._state.placeholderHistory],
+          {
+            autoSelectBracketPlaceholder:
+              this._state.autoSelectBracketPlaceholder,
+          },
         );
         insertion = await Promise.resolve(
-          this._editor.insert(prepared.text, prepared.caretOffset),
+          this._editor.insert(
+            prepared.text,
+            prepared.caretOffset,
+            prepared.selectionEndOffset,
+          ),
         );
       } catch (_error) {
         insertion = { ok: false, code: "INSERTION_FAILED" };
@@ -402,6 +414,39 @@
         this._state.busy = false;
         this._render();
         this._showStatus("按钮位置保存失败，当前位置会保留到本页关闭。", "error");
+        this._flushExternalSync();
+        return { ok: false, code: error?.code || "SAVE_FAILED" };
+      }
+    }
+
+    async setAutoSelectBracketPlaceholder(enabled) {
+      if (!this._canWrite()) {
+        return this._busyResult();
+      }
+      if (typeof this._storage?.saveAutoSelectBracketPlaceholder !== "function") {
+        this._showStatus("插入设置暂时无法保存。", "error");
+        return { ok: false, code: "SETTING_UNAVAILABLE" };
+      }
+
+      const snapshot = cloneControllerState(this._state);
+      const candidate = Boolean(enabled);
+      this._state.busy = true;
+      this._render();
+      try {
+        await this._storage.saveAutoSelectBracketPlaceholder(candidate);
+        this._state = {
+          ...snapshot,
+          autoSelectBracketPlaceholder: candidate,
+          busy: false,
+          loading: false,
+        };
+        this._render();
+        this._flushExternalSync();
+        return { ok: true };
+      } catch (error) {
+        this._state = { ...snapshot, busy: false, loading: false };
+        this._render();
+        this._showStatus("插入设置保存失败，请重试。", "error");
         this._flushExternalSync();
         return { ok: false, code: error?.code || "SAVE_FAILED" };
       }
@@ -657,6 +702,39 @@
     return icon;
   }
 
+  function createSettingsIcon(documentObject) {
+    const icon = createSvgElement(documentObject, "svg", {
+      viewBox: "0 0 20 20",
+      width: "17",
+      height: "17",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "1.6",
+      "stroke-linecap": "round",
+      focusable: "false",
+      "aria-hidden": "true",
+      class: "phg-settings-icon",
+    });
+    for (const data of ["M4 5h12", "M4 10h12", "M4 15h12"]) {
+      icon.append(createSvgElement(documentObject, "path", { d: data }));
+    }
+    for (const [cx, cy] of [
+      [7, 5],
+      [13, 10],
+      [9, 15],
+    ]) {
+      icon.append(
+        createSvgElement(documentObject, "circle", {
+          cx,
+          cy,
+          r: "1.55",
+          fill: "var(--phg-header-surface)",
+        }),
+      );
+    }
+    return icon;
+  }
+
   function viewportSize(windowObject, documentObject) {
     return {
       width: Math.max(
@@ -704,6 +782,7 @@
       this._empty = null;
       this._status = null;
       this._addButton = null;
+      this._settingsButton = null;
       this._closeButton = null;
       this._dialogLayer = null;
       this._dialog = null;
@@ -794,8 +873,22 @@
         text: "×",
         attributes: { "aria-label": "关闭提示词助手" },
       });
+      const settingsButton = createElement(this._document, "button", {
+        id: "phg-open-settings",
+        className: "phg-icon-button phg-panel-settings",
+        type: "button",
+        attributes: {
+          "aria-label": "打开插入设置",
+          title: "插入设置",
+        },
+      });
+      settingsButton.append(createSettingsIcon(this._document));
+      const panelActions = createElement(this._document, "div", {
+        className: "phg-panel-actions",
+      });
+      panelActions.append(settingsButton, closeButton);
       identity.append(orbitMark, title);
-      header.append(identity, closeButton);
+      header.append(identity, panelActions);
 
       const body = createElement(this._document, "div", {
         className: "phg-panel-body",
@@ -852,6 +945,7 @@
       this._empty = empty;
       this._status = status;
       this._addButton = addButton;
+      this._settingsButton = settingsButton;
       this._closeButton = closeButton;
       this._bindEvents();
       this.ensureMounted();
@@ -876,6 +970,7 @@
       this.ensureMounted();
       this._renderPromptList();
       this._addButton.disabled = this._state.busy || this._state.loading;
+      this._settingsButton.disabled = this._state.busy || this._state.loading;
       this._launcher.disabled = this._state.loading;
       const buttonRect = this._launcher.getBoundingClientRect();
       const buttonSize = {
@@ -978,6 +1073,12 @@
         record?.placeholder || namespace.DEFAULT_PLACEHOLDER || "【光标】",
       );
       placeholderField.control.setAttribute("autocomplete", "off");
+      placeholderField.wrapper.append(
+        createElement(this._document, "span", {
+          className: "phg-field-help",
+          text: "若正文命中此占位符，会优先移除它并定位光标。",
+        }),
+      );
 
       const historySection = createElement(this._document, "section", {
         className: "phg-history",
@@ -1053,6 +1154,94 @@
         }
       });
       nameField.control.focus?.({ preventScroll: true });
+      this._updateDialogState();
+      return dialog;
+    }
+
+    openSettingsDialog(opener = null) {
+      if (!this._root) {
+        return null;
+      }
+      this.closeDialog({ restoreFocus: false });
+      this._dialogKind = "settings";
+      this._dialogRecord = null;
+      this._dialogOpener =
+        opener || this._document.activeElement || this._settingsButton;
+
+      const { layer, dialog, header, body, footer } =
+        this._createDialogShell("插入设置");
+      const form = createElement(this._document, "form", {
+        id: "phg-settings-form",
+        className: "phg-form",
+      });
+      const setting = createElement(this._document, "label", {
+        className: "phg-switch-setting",
+        attributes: { for: "phg-auto-select-bracket-placeholder" },
+      });
+      const copy = createElement(this._document, "span", {
+        className: "phg-setting-copy",
+      });
+      const settingTitle = createElement(this._document, "span", {
+        className: "phg-setting-title",
+        text: "自动选中第一处【…】",
+      });
+      const settingDescription = createElement(this._document, "span", {
+        className: "phg-setting-description",
+        text: "插入后可直接输入内容，替换整段全角中括号占位符。",
+      });
+      copy.append(settingTitle, settingDescription);
+      const checkbox = createElement(this._document, "input", {
+        id: "phg-auto-select-bracket-placeholder",
+        className: "phg-switch-input",
+        type: "checkbox",
+        attributes: { role: "switch" },
+      });
+      checkbox.checked = this._state.autoSelectBracketPlaceholder;
+      const switchTrack = createElement(this._document, "span", {
+        className: "phg-switch-track",
+        attributes: { "aria-hidden": "true" },
+      });
+      setting.append(copy, checkbox, switchTrack);
+      const priorityNote = createElement(this._document, "p", {
+        className: "phg-setting-note",
+        text: "优先级：当前自定义光标 → 【光标】/[光标] → 第一处【…】 → 历史兼容占位符。只有实际命中的规则才会生效。",
+      });
+      body.append(setting, priorityNote);
+
+      const cancelButton = createElement(this._document, "button", {
+        id: "phg-cancel-dialog",
+        className: "phg-button phg-button-secondary",
+        type: "button",
+        text: "取消",
+      });
+      const saveButton = createElement(this._document, "button", {
+        id: "phg-save-settings",
+        className: "phg-button phg-button-primary",
+        type: "submit",
+        text: "保存",
+      });
+      footer.append(cancelButton, saveButton);
+      form.append(body, footer);
+      dialog.append(header, form);
+      layer.append(dialog);
+      this._root.append(layer);
+      this._setDialogReferences(layer, dialog);
+
+      cancelButton.addEventListener("click", () => this.closeDialog());
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (this._state.busy) {
+          return;
+        }
+        const result =
+          await this._controller?.setAutoSelectBracketPlaceholder?.(
+            checkbox.checked,
+          );
+        if (result?.ok) {
+          this.closeDialog();
+        }
+      });
+      checkbox.focus?.({ preventScroll: true });
       this._updateDialogState();
       return dialog;
     }
@@ -1194,6 +1383,9 @@
         this._handlePointerEnd(event, true),
       );
       this._closeButton.addEventListener("click", () => this.closePanel());
+      this._settingsButton.addEventListener("click", (event) =>
+        this.openSettingsDialog(event.currentTarget),
+      );
       this._addButton.addEventListener("click", (event) =>
         this.openPromptDialog(null, event.currentTarget),
       );
@@ -1439,6 +1631,9 @@
       if (opener?.isConnected) {
         return opener;
       }
+      if (kind === "settings" && this._settingsButton?.isConnected) {
+        return this._settingsButton;
+      }
       if (record?.id && this._list) {
         const action = kind === "delete" ? "delete" : "edit";
         const replacement = Array.from(
@@ -1456,11 +1651,21 @@
         return;
       }
       this._renderHistory();
-      for (const id of ["phg-save-prompt", "phg-confirm-delete"]) {
+      for (const id of [
+        "phg-save-prompt",
+        "phg-save-settings",
+        "phg-confirm-delete",
+      ]) {
         const button = this._document.getElementById?.(id);
         if (button) {
           button.disabled = this._state.busy;
         }
+      }
+      const setting = this._document.getElementById?.(
+        "phg-auto-select-bracket-placeholder",
+      );
+      if (setting) {
+        setting.disabled = this._state.busy;
       }
     }
 

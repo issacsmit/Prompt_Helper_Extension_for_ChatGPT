@@ -379,6 +379,13 @@ html[data-theme="dark"] #phg-root {
   gap: 10px;
 }
 
+#phg-root .phg-panel-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
 #phg-root .phg-orbit-mark {
   position: relative;
   display: block;
@@ -748,7 +755,8 @@ html[data-theme="dark"] #phg-root {
   font-size: 12px;
 }
 
-#phg-root .phg-panel-close {
+#phg-root .phg-panel-close,
+#phg-root .phg-panel-settings {
   width: 32px;
   min-width: 32px;
   min-height: 32px;
@@ -756,12 +764,24 @@ html[data-theme="dark"] #phg-root {
   border-color: transparent;
   background: transparent;
   color: var(--phg-icon-muted);
-  font-size: 21px;
-  font-weight: 300;
   line-height: 1;
 }
 
-#phg-root .phg-panel-close:hover {
+#phg-root .phg-panel-close {
+  font-size: 21px;
+  font-weight: 300;
+}
+
+#phg-root .phg-panel-settings {
+  color: var(--phg-icon-muted);
+}
+
+#phg-root .phg-settings-icon {
+  display: block;
+}
+
+#phg-root .phg-panel-close:hover,
+#phg-root .phg-panel-settings:hover {
   border-color: var(--phg-border);
   background: var(--phg-card);
   color: var(--phg-text);
@@ -919,6 +939,14 @@ html[data-theme="dark"] #phg-root {
   font-weight: 650;
 }
 
+#phg-root .phg-field-help,
+#phg-root .phg-setting-description,
+#phg-root .phg-setting-note {
+  color: var(--phg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 #phg-root .phg-control {
   width: 100%;
   min-height: 42px;
@@ -933,6 +961,84 @@ html[data-theme="dark"] #phg-root {
 
 #phg-root .phg-control::placeholder {
   color: var(--phg-muted);
+}
+
+#phg-root .phg-switch-setting {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px;
+  border: 1px solid var(--phg-border);
+  border-radius: 10px;
+  background: var(--phg-card);
+  cursor: pointer;
+}
+
+#phg-root .phg-setting-copy {
+  display: grid;
+  gap: 4px;
+}
+
+#phg-root .phg-setting-title {
+  color: var(--phg-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#phg-root .phg-setting-note {
+  margin: 0;
+}
+
+#phg-root .phg-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#phg-root .phg-switch-track {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border: 1px solid var(--phg-border-strong);
+  border-radius: 999px;
+  background: var(--phg-page);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+#phg-root .phg-switch-track::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--phg-muted);
+  content: "";
+  transition: transform 180ms var(--phg-spring), background 160ms ease;
+}
+
+#phg-root .phg-switch-input:checked + .phg-switch-track {
+  border-color: rgb(123 112 230 / 72%);
+  background: color-mix(in srgb, var(--phg-accent-mid) 68%, var(--phg-page));
+}
+
+#phg-root .phg-switch-input:checked + .phg-switch-track::after {
+  background: #ffffff;
+  transform: translateX(20px);
+}
+
+#phg-root .phg-switch-input:focus-visible + .phg-switch-track {
+  outline: 2px solid var(--phg-focus-ring);
+  outline-offset: 2px;
+}
+
+#phg-root .phg-switch-input:disabled + .phg-switch-track {
+  cursor: not-allowed;
+  opacity: .48;
 }
 
 #phg-root .phg-history-title {
@@ -1043,7 +1149,8 @@ html[data-theme="dark"] #phg-root {
     min-height: 44px;
   }
 
-  #phg-root .phg-panel-close {
+  #phg-root .phg-panel-close,
+  #phg-root .phg-panel-settings {
     width: 44px;
     min-width: 44px;
     min-height: 44px;
@@ -1091,6 +1198,11 @@ html[data-theme="dark"] #phg-root {
     scroll-behavior: auto;
     transition: none !important;
     animation: none !important;
+  }
+
+  #phg-root .phg-switch-track,
+  #phg-root .phg-switch-track::after {
+    transition: none !important;
   }
 
   #phg-root .phg-launcher,

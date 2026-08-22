@@ -19,9 +19,9 @@
 
 | 文件 | 职责 | `PromptHelper` 公开接口 |
 | --- | --- | --- |
-| `constants.js` | 默认/旧版占位符、历史上限、三个存储键、3000 ms 超时 | `DEFAULT_PLACEHOLDER`、`LEGACY_PLACEHOLDER`、`MAX_PLACEHOLDER_HISTORY`、`STORAGE_KEYS`、`STORAGE_TIMEOUT_MS` |
+| `constants.js` | 默认/旧版占位符、`【…】` 自动选中默认值、历史上限、存储键、3000 ms 超时 | `DEFAULT_PLACEHOLDER`、`LEGACY_PLACEHOLDER`、`DEFAULT_AUTO_SELECT_BRACKET_PLACEHOLDER`、`MAX_PLACEHOLDER_HISTORY`、`STORAGE_KEYS`、`STORAGE_TIMEOUT_MS` |
 | `storage.js` | Chrome `storage.local` 规范化、超时、错误、快照与订阅 | `Storage`、`StorageError` |
-| `prompt-engine.js` | 删除第一个匹配占位符并计算光标；维护历史 | `prepareInsertion()`、`updatePlaceholderHistory()` |
+| `prompt-engine.js` | 解析占位符优先级，计算光标或选区范围；维护历史 | `prepareInsertion()`、`updatePlaceholderHistory()` |
 | `chatgpt-editor.js` | ChatGPT composer 定位、字符书签和非覆盖式插入 | `ChatGPTComposerAdapter` |
 | `ui.js` | 布局纯函数、控制器、DOM UI、CRUD、对话框和拖拽 | `PromptHelperController`、`PromptHelperUI` 及布局辅助函数 |
 | `content.js` | 依赖装配、单例、SPA 观察和销毁 | `initializePromptHelper()`、`destroyPromptHelper()` |
@@ -47,8 +47,8 @@
 插入路径：
 
 1. UI 的捕获阶段 `pointerdown` 在控件夺取焦点前调用 `captureBookmark()`。
-2. 控制器调用 `prepareInsertion()` 得到 `{ text, caretOffset }`。
-3. 适配器在最新 editor 中恢复字符偏移、插入、验证实际文本并派发冒泡且 `composed` 的 `input` 事件。
+2. 控制器调用 `prepareInsertion()` 得到 `{ text, caretOffset }`；若命中通用 `【…】`，还会得到 `selectionEndOffset`。
+3. 适配器在最新 editor 中恢复字符偏移、插入、验证实际文本，并恢复折叠光标或非折叠选区，随后派发冒泡且 `composed` 的 `input` 事件。
 4. 成功后只关闭面板，不触发发送，也不强制把焦点移到浮钮。
 
 ## ChatGPT DOM 定位与 SPA 假设
@@ -68,7 +68,7 @@ ChatGPT 是 SPA：路由或 composer 状态变化可替换整个 editor 节点�
 
 - 书签来自 `selectionStart`，有选区时折叠到选区起点，不删除选中文字。
 - 插入内容的 CRLF/CR 先按原生 textarea 规则规范化为 LF。
-- 优先调用原型 `value` setter，再验证最终 `value`，恢复折叠 selection 并派发 `input`。
+- 优先调用原型 `value` setter，再验证最终 `value`，恢复折叠光标或目标选区并派发 `input`。
 
 ### contenteditable
 
@@ -77,6 +77,8 @@ ChatGPT 是 SPA：路由或 composer 状态变化可替换整个 editor 节点�
 - 优先使用 `document.execCommand("insertText")`，不可用或失败时才用折叠 Range 插入文本节点。
 - 插入前后都计算逻辑文本并与唯一期望值比较；宿主没有真正接受内容时返回 `INSERTION_FAILED`，不伪造成功事件。
 
+占位符解析顺序固定为：当前提示词的自定义光标、`【光标】` / `[光标]`、第一处通用 `【…】`、历史兼容占位符。前三类光标占位符仍按旧行为移除并定位；通用 `【…】` 保留在插入文本中并整体选中。全局开关关闭时跳过通用规则，不改变旧版、自定义与历史兼容行为。
+
 ## 存储、超时、回滚与跨标签同步
 
 `Storage` 对每次 `get`/`set` 使用 3000 ms 超时，并同时兼容 Chrome callback 与 Promise 形式。callback 必须同步读取正常的 `chrome.runtime.lastError`；扩展重新加载导致的 context invalidated 会归一为 `EXTENSION_CONTEXT_INVALID`。
@@ -84,14 +86,16 @@ ChatGPT 是 SPA：路由或 composer 状态变化可替换整个 editor 节点�
 成功 `load()`、成功写入或相关 `storage.onChanged` 才推进存储层的最后已知状态。保存返回写入前的 `rollbackSnapshot`，失败时同一快照附在错误上。控制器另外保留自己的候选前快照：
 
 - 提示词/历史写失败：恢复完整 prompts 与 placeholderHistory。
+- `【…】` 自动选中设置写失败：恢复写入前的开关值。
 - 浮钮位置写失败：本页保留已夹取的安全坐标并提示未持久化。
 - 写入期间收到跨标签事件：标记 pending，写入结束后重新 `load()`。
 
-三个键必须保持为 `ph_prompts`、`ph_placeholder_history`、`ph_button_pos`。若迁移数据结构，应先写兼容读取和失败测试，不能静默丢弃有效旧数据。
+已有键必须保持为 `ph_prompts`、`ph_placeholder_history`、`ph_button_pos`；自动选中设置使用 `ph_auto_select_bracket_placeholder`，旧数据缺失该键时按开启处理。若迁移数据结构，应先写兼容读取和失败测试，不能静默丢弃有效旧数据。
 
 ## UI 生命周期与隔离
 
 - 所有扩展 DOM 使用 `phg-` 前缀，并挂在唯一 `#phg-root` 下；用户文本只经 `textContent` 或原生 value 写入。
+- 面板标题栏的插入设置对话框承载全局 `【…】` 自动选中开关，并直接说明占位符冲突优先级。
 - 样式限定在 `#phg-root`，覆盖明暗主题、减少动画与 44 px 触控目标，不使用全局 `button`/`input` 重置。
 - 对话框处理 Esc、Tab 循环与 opener 焦点恢复；面板外点击只关闭面板。
 - `destroy()` 必须解除 document/window/storage/MutationObserver 监听并保持幂等。

@@ -42,14 +42,18 @@ class FakeStorage {
       buttonPosition: initialState.buttonPosition
         ? clone(initialState.buttonPosition)
         : null,
+      autoSelectBracketPlaceholder:
+        initialState.autoSelectBracketPlaceholder !== false,
     };
     this.loadCalls = 0;
     this.promptSaves = [];
     this.positionSaves = [];
+    this.settingSaves = [];
     this.listeners = new Set();
     this.nextLoadError = null;
     this.nextSaveError = null;
     this.nextPositionError = null;
+    this.nextSettingError = null;
     this.nextSaveGate = null;
     this.unsubscribeCalls = 0;
   }
@@ -92,6 +96,17 @@ class FakeStorage {
       throw error;
     }
     this.state.buttonPosition = clone(position);
+    return { rollbackSnapshot: null };
+  }
+
+  async saveAutoSelectBracketPlaceholder(enabled) {
+    this.settingSaves.push(enabled);
+    if (this.nextSettingError) {
+      const error = this.nextSettingError;
+      this.nextSettingError = null;
+      throw error;
+    }
+    this.state.autoSelectBracketPlaceholder = enabled;
     return { rollbackSnapshot: null };
   }
 
@@ -148,8 +163,12 @@ function createController(options = {}) {
       this.bookmarks += 1;
       return { offset: 1 };
     },
-    insert(text, caretOffset) {
-      this.insertCalls.push({ text, caretOffset });
+    insert(text, caretOffset, selectionEndOffset) {
+      const call = { text, caretOffset };
+      if (Number.isFinite(selectionEndOffset)) {
+        call.selectionEndOffset = selectionEndOffset;
+      }
+      this.insertCalls.push(call);
       return { ok: true, code: "INSERTED" };
     },
   };
@@ -180,6 +199,7 @@ test("controller is exposed and instances provide the task actions", () => {
     "deletePlaceholderHistory",
     "insertPrompt",
     "saveButtonPosition",
+    "setAutoSelectBracketPlaceholder",
     "captureBookmark",
     "destroy",
   ]) {
@@ -209,6 +229,7 @@ test("initialize loads and renders persistent state before subscribing", async (
     prompts: [prompt],
     placeholderHistory: ["<旧>"],
     buttonPosition: { left: 20, top: 30 },
+    autoSelectBracketPlaceholder: true,
     loading: false,
     busy: false,
   });
@@ -230,6 +251,7 @@ test("load failure renders a safe empty state and a visible Chinese error", asyn
     prompts: [],
     placeholderHistory: [],
     buttonPosition: null,
+    autoSelectBracketPlaceholder: true,
     loading: false,
     busy: false,
   });
@@ -410,6 +432,66 @@ test("insertion uses the engine, closes without stealing focus, and reports exac
   assert.equal(view.panelCloses.length, 1);
 });
 
+test("bracket selection range reaches the editor and the global switch disables it", async () => {
+  const prompt = {
+    id: "bracket",
+    name: "可填写",
+    prompt: "前【主题】后",
+    placeholder: DEFAULT_PLACEHOLDER,
+  };
+  const editor = {
+    insertCalls: [],
+    insert(text, caretOffset, selectionEndOffset) {
+      const call = { text, caretOffset };
+      if (Number.isFinite(selectionEndOffset)) {
+        call.selectionEndOffset = selectionEndOffset;
+      }
+      this.insertCalls.push(call);
+      return { ok: true, code: "INSERTED" };
+    },
+  };
+  const { controller, storage } = createController({
+    initialState: { prompts: [prompt] },
+    editor,
+  });
+  await controller.initialize();
+
+  await controller.insertPrompt("bracket");
+  assert.deepEqual(editor.insertCalls[0], {
+    text: prompt.prompt,
+    caretOffset: 1,
+    selectionEndOffset: 5,
+  });
+
+  assert.deepEqual(await controller.setAutoSelectBracketPlaceholder(false), {
+    ok: true,
+  });
+  assert.equal(controller.getState().autoSelectBracketPlaceholder, false);
+  assert.deepEqual(storage.settingSaves, [false]);
+
+  await controller.insertPrompt("bracket");
+  assert.deepEqual(editor.insertCalls[1], {
+    text: prompt.prompt,
+    caretOffset: prompt.prompt.length,
+  });
+});
+
+test("failed bracket selection setting writes restore the previous value", async () => {
+  const { controller, storage, view } = createController({
+    initialState: { autoSelectBracketPlaceholder: false },
+  });
+  await controller.initialize();
+  storage.nextSettingError = Object.assign(new Error("quota"), {
+    code: "CHROME_RUNTIME_ERROR",
+  });
+
+  const result = await controller.setAutoSelectBracketPlaceholder(true);
+
+  assert.deepEqual(result, { ok: false, code: "CHROME_RUNTIME_ERROR" });
+  assert.equal(controller.getState().autoSelectBracketPlaceholder, false);
+  assert.match(view.statuses.at(-1).message, /设置保存失败/u);
+});
+
 test("concurrent writes are rejected while the candidate remains uncommitted", async () => {
   const storage = new FakeStorage();
   const gate = deferred();
@@ -444,6 +526,7 @@ test("external storage changes reload prompts, history, and button position", as
     ],
     placeholderHistory: ["<外部>"],
     buttonPosition: { left: 90, top: 40 },
+    autoSelectBracketPlaceholder: false,
   };
 
   await storage.emitExternal(external);

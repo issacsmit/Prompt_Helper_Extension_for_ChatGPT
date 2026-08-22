@@ -677,6 +677,24 @@ test("textarea accepts native newline normalization and maps caretOffset to norm
   assert.equal(textarea.dispatchedEvents[0].data, "A\nB\nC");
 });
 
+test("textarea insertion can select an inserted bracket placeholder range", () => {
+  const { textarea, adapter } = createTextareaComposer("base");
+  const text = "请写【主题】";
+
+  const result = adapter.insert(text, 2, 6);
+
+  assert.deepEqual(result, {
+    ok: true,
+    code: "INSERTED",
+    insertionStart: 4,
+    caretPosition: 6,
+  });
+  assert.equal(textarea.value, `base${text}`);
+  assert.equal(textarea.selectionStart, 6);
+  assert.equal(textarea.selectionEnd, 10);
+  assert.equal(adapter.captureBookmark().offset, 6);
+});
+
 test("contenteditable bookmark maps nested selection start and preserves selected text", () => {
   const documentObject = new FakeDocument();
   const nestedText = documentObject.createTextNode("乙丙");
@@ -725,6 +743,33 @@ test("contenteditable bookmark maps nested selection start and preserves selecte
 
   const restoredBookmark = adapter.captureBookmark();
   assert.equal(restoredBookmark.offset, 3);
+});
+
+test("contenteditable insertion can select an inserted bracket placeholder range", () => {
+  const documentObject = new FakeDocument();
+  const paragraph = element(documentObject, "p", {}, ["base"]);
+  const { editor, adapter } = createContenteditableComposer(
+    [paragraph],
+    documentObject,
+  );
+  const text = "前【主题】后";
+
+  const result = adapter.insert(text, 1, 5);
+
+  assert.deepEqual(result, {
+    ok: true,
+    code: "INSERTED",
+    insertionStart: 4,
+    caretPosition: 5,
+  });
+  assert.equal(blockText(editor), `base${text}`);
+  const range = documentObject.selection.getRangeAt(0);
+  assert.equal(range.collapsed, false);
+  assert.equal(range.startContainer.data, text);
+  assert.equal(range.startOffset, 1);
+  assert.equal(range.endContainer, range.startContainer);
+  assert.equal(range.endOffset, 5);
+  assert.equal(adapter.captureBookmark().offset, 5);
 });
 
 test("contenteditable treats non-editable attachment descendants as an atomic boundary", () => {

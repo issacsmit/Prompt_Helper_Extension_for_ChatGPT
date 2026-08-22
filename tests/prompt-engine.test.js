@@ -19,6 +19,7 @@ test("constants expose the supported placeholders through CommonJS and PromptHel
 
   assert.equal(constants.DEFAULT_PLACEHOLDER, "【光标】");
   assert.equal(constants.LEGACY_PLACEHOLDER, "[光标]");
+  assert.equal(constants.DEFAULT_AUTO_SELECT_BRACKET_PLACEHOLDER, true);
   assert.equal(globalThis.PromptHelper?.DEFAULT_PLACEHOLDER, constants.DEFAULT_PLACEHOLDER);
   assert.equal(globalThis.PromptHelper?.LEGACY_PLACEHOLDER, constants.LEGACY_PLACEHOLDER);
 });
@@ -104,6 +105,70 @@ test("multiline text is preserved and caret offset points to the removed marker"
     caretOffset: content.indexOf("<slot>"),
     matchedPlaceholder: "<slot>",
   });
+});
+
+test("first full-width bracket placeholder stays in the text and becomes the selection", () => {
+  const content = "请把【主题】写成【风格】。";
+
+  assert.deepEqual(prepareInsertion({ prompt: content }), {
+    text: content,
+    caretOffset: content.indexOf("【主题】"),
+    selectionEndOffset: content.indexOf("【主题】") + "【主题】".length,
+    matchedPlaceholder: "【主题】",
+  });
+});
+
+test("an explicit custom cursor placeholder wins over bracket auto-selection", () => {
+  const content = "先看【主题】，再到<位置>继续";
+
+  assert.deepEqual(
+    prepareInsertion({ prompt: content, placeholder: "<位置>" }),
+    {
+      text: "先看【主题】，再到继续",
+      caretOffset: content.indexOf("<位置>"),
+      matchedPlaceholder: "<位置>",
+    },
+  );
+});
+
+test("bracket auto-selection wins over history fallback but can be disabled", () => {
+  const content = "【主题】后接<旧位置>";
+
+  assert.deepEqual(prepareInsertion({ prompt: content }, ["<旧位置>"]), {
+    text: content,
+    caretOffset: 0,
+    selectionEndOffset: 4,
+    matchedPlaceholder: "【主题】",
+  });
+  assert.deepEqual(
+    prepareInsertion(
+      { prompt: content },
+      ["<旧位置>"],
+      { autoSelectBracketPlaceholder: false },
+    ),
+    {
+      text: "【主题】后接",
+      caretOffset: content.indexOf("<旧位置>"),
+      matchedPlaceholder: "<旧位置>",
+    },
+  );
+});
+
+test("disabling bracket auto-selection leaves unmatched bracket text untouched", () => {
+  const content = "请填写【任何内容】";
+
+  assert.deepEqual(
+    prepareInsertion(
+      { prompt: content },
+      [],
+      { autoSelectBracketPlaceholder: false },
+    ),
+    {
+      text: content,
+      caretOffset: content.length,
+      matchedPlaceholder: null,
+    },
+  );
 });
 
 test("text stays unchanged and caret moves to the end when no marker matches", () => {

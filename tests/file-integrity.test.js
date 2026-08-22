@@ -247,6 +247,7 @@ test("Chinese documentation covers product boundaries, architecture, and manual 
     "ph_prompts",
     "ph_placeholder_history",
     "ph_button_pos",
+    "ph_auto_select_bracket_placeholder",
     "npm test",
     "刷新页面",
   ]) {
@@ -289,6 +290,7 @@ test("Chinese documentation covers product boundaries, architecture, and manual 
     "【光标】",
     "[光标]",
     "自定义占位符",
+    "自动选中",
     "刷新",
     "附件",
     "不自动发送",
