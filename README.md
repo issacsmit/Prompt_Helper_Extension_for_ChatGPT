@@ -1,6 +1,17 @@
-# ChatGPT 提示词助手 (Prompt Helper for ChatGPT)
+<div align="center">
+  <img src="docs/images/prompt-helper-launcher.png" width="96" alt="ChatGPT 提示词助手浮动按钮">
+  <h1>ChatGPT 提示词助手</h1>
+  <p>在 ChatGPT 网页版集中管理常用提示词，一键插入，并把光标或选区准确放到需要填写的位置。</p>
+  <p><strong>本地存储 · 零运行依赖 · 不联网 · 不自动发送</strong></p>
+</div>
 
-一个 Chrome 扩展（Manifest V3），让你在 ChatGPT 网页版管理并快速插入常用提示词，同时把光标准确定位到占位符位置。
+![ChatGPT 提示词助手在 ChatGPT 页面中的主界面](docs/images/prompt-helper-panel.png)
+
+<p align="center"><sub>Quiet Orbit 界面：提示词面板、插入设置与可拖动浮动入口。</sub></p>
+
+## 它解决什么问题
+
+反复复制长提示词时，真正麻烦的往往不是粘贴，而是每次都要找到并改掉其中的“主题”“对象”或“要求”。本扩展把提示词保存在浏览器本地；点击卡片即可插入，并自动定位到第一个待填写位置，让下一次键盘输入直接完成替换。
 
 ## 特性
 
@@ -15,6 +26,18 @@
 - 在细指针设备上，提示词卡片悬停时显示编辑和删除图标；触屏设备始终显示这些操作
 - 支持 `prefers-reduced-motion` 和键盘操作（Esc 关闭、Tab 焦点循环）
 - 零运行依赖，不联网，不读取 API Key，不上传提示词或聊天内容
+
+## 快速体验
+
+保存下面这条提示词：
+
+```text
+请面向【目标读者】，用简洁的语言解释【主题】，并给出三个例子。
+```
+
+点击提示词卡片后，正文会插入 ChatGPT 输入框，并自动选中第一处 `【目标读者】`。此时直接输入即可整体替换这段文字；同一条提示词中的后续 `【主题】` 保持不变，方便继续填写。
+
+如果模板使用的是 `【光标】`、`[光标]` 或自定义光标占位符，命中的标记会被移除，光标停在原位置。两种模式可以共存，并按固定优先级避免冲突。
 
 ## 安装
 
@@ -75,6 +98,7 @@
 ├── content.js           # 初始化、单例与 SPA 生命周期
 ├── content.css          # 明暗主题与组件样式
 ├── icons/               # 扩展图标（16 / 48 / 128）
+├── docs/images/         # README 产品截图
 ├── tests/               # 自动化测试与本地浏览器 fixture
 ├── DEVELOPMENT.md       # 架构和维护说明
 └── TEST_CHECKLIST.md    # 真实页面人工回归清单
