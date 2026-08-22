@@ -18,6 +18,7 @@ const REQUIRED_FILES = Object.freeze([
   "README.md",
   "docs/images/prompt-helper-launcher.png",
   "docs/images/prompt-helper-panel.png",
+  "docs/images/bracket-placeholder-selection.png",
   "DEVELOPMENT.md",
   "TEST_CHECKLIST.md",
   "tests/fixtures/chatgpt-composer.html",
