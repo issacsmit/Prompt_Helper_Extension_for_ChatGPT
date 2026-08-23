@@ -52,9 +52,9 @@
 
 ### 手动安装
 
-先取得源码，二选一即可。
+推荐用 Git 取得源码。以后更新只需在同一目录 `git pull`，不必再下压缩包、也不必覆盖文件。没有 Git 时再用 ZIP。
 
-**用 Git：**
+**用 Git（推荐）：**
 
 ```text
 git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
@@ -62,7 +62,7 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 
 记住这个文件夹的位置。以后更新时，必须在**同一个**文件夹里执行 `git pull`，不要重新克隆一份。
 
-**用 ZIP：**
+**用 ZIP（没有 Git 时）：**
 
 1. 打开仓库页面：<https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT>
 2. 点击绿色的 **Code** → **Download ZIP**
@@ -100,7 +100,7 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 
 要求：
 1. 若当前目录已经是该仓库（存在 manifest.json，且其中 "name" 为「ChatGPT 提示词助手」），不要再克隆一份，直接告诉我这个目录的绝对路径。
-2. 否则用 git clone 克隆到用户主目录下容易找到的位置；若没有 git，再下载仓库 ZIP 并解压。
+2. 否则优先用 git clone 克隆到用户主目录下容易找到的位置；若没有 git，再下载仓库 ZIP 并解压。
 3. 克隆或解压完成后，确认该目录的第一层就有 manifest.json、content.js、ui.js、content.css。若多出 *-main 这一层，以含 manifest.json 的那一层为准。
 4. 不要执行 npm install（本项目无运行依赖）。不要用 --load-extension、不要操作 Chrome、不要打开 chrome://extensions/、不要模拟点击「加载已解压的扩展程序」。Chrome 不允许脚本把扩展写进用户正在使用的浏览器配置。
 5. 完成后只输出：
@@ -114,7 +114,7 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 
 加载已解压的扩展**不会**随 GitHub 自动更新。你改完磁盘上的文件后，还要让 Chrome 和已经打开的页面都换上新脚本。
 
-1. 更新文件夹里的源码（下一节二选一）
+1. 更新文件夹里的源码（优先 `git pull`；当初是 ZIP 安装的见下面）
 2. 打开 `chrome://extensions/`，在「ChatGPT 提示词助手」卡片上点 **重新加载**
 3. 刷新已经打开的 ChatGPT 标签。只重新加载扩展、不刷新页面，标签里仍运行旧版 content script
 
@@ -122,7 +122,7 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 
 不要再次「加载已解压的扩展程序」来更新，否则会装成第二份。
 
-**Git 安装的更新：** 打开当初 `git clone` 出来的那个目录，执行 `git pull`。这只会把该目录里的文件更新到 GitHub 最新，不会另外克隆一份。`git pull` 之后仍须做上面的第 2、3 步（扩展页重新加载，再刷新 ChatGPT）。
+**Git 安装的更新（推荐）：** 打开当初 `git clone` 出来的那个目录，执行 `git pull`。这只会把该目录里的文件更新到 GitHub 最新，不会另外克隆一份。`git pull` 之后仍须做上面的第 2、3 步（扩展页重新加载，再刷新 ChatGPT）。
 
 **ZIP 安装的更新：** 你需要再从 GitHub 下载一份新的 ZIP（和第一次下载的是另一份压缩包）。解压后，把里面的文件**复制并覆盖**到 Chrome 正在加载的那个旧目录里（路径看扩展卡片），不要把新解压出来的文件夹再「加载已解压」一次。覆盖完成后，同样做第 2、3 步。
 
