@@ -45,21 +45,106 @@
 
 ## 安装
 
-本扩展暂未上架 Chrome Web Store，需要手动加载：
+本扩展暂未上架 Chrome Web Store。Windows 上的正式版 Chrome **不能**靠一行命令、拖入 `.crx` 或 `--load-extension` 装进你正在使用的浏览器配置。可靠做法只有一种：把源码放到本地文件夹，再在 Chrome 里 **加载已解压的扩展程序**。
 
-1. 克隆或下载本仓库：
+本地编程 Agent（Cursor、Claude Code、Codex、本机 Grok 等）可以替你下载源码，**不能**替你点完 Chrome 里的加载步骤。网页里的 ChatGPT / Grok 对话既没有磁盘权限，也进不了 `chrome://extensions/`，请不要把下面的 Agent 提示词发给它们。
 
-   ```text
-   git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
-   ```
+### 手动安装
 
-2. 打开 Chrome，访问 `chrome://extensions/`
-3. 开启右上角的 **开发者模式**
-4. 点击 **加载已解压的扩展程序**
-5. 选择本仓库当前根目录（包含 `manifest.json`）
-6. 打开或刷新 [ChatGPT](https://chatgpt.com/)，页面右下角应出现提示词助手浮动按钮
+先取得源码，二选一即可。
 
-重新加载扩展后，已经打开的 ChatGPT 标签页也需要刷新，否则页面中仍然运行旧版 content script。
+**用 Git：**
+
+```text
+git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
+```
+
+记住这个文件夹的位置。以后更新时，必须在**同一个**文件夹里执行 `git pull`，不要重新克隆一份。
+
+**用 ZIP：**
+
+1. 打开仓库页面：<https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT>
+2. 点击绿色的 **Code** → **Download ZIP**
+3. 解压到一个你找得到、以后也不会随便挪走的位置，例如 `Documents\Prompt_Helper_Extension_for_ChatGPT`
+4. 解压后常会多一层 `Prompt_Helper_Extension_for_ChatGPT-main`。最终要加载的，是**里面直接含有 `manifest.json` 的那一层**，不要选到更外层的空壳目录，也不要选 `tests`、`docs` 或 `icons`
+
+无论用哪种方式，打开该文件夹应能直接看到 `manifest.json`、`content.js`、`ui.js`、`content.css`。这就是扩展的当前根目录。
+
+然后在 Chrome 里加载：
+
+1. 地址栏进入 `chrome://extensions/`（复制粘贴即可）
+2. 打开右上角 **开发者模式**
+3. 点击 **加载已解压的扩展程序**
+4. 在文件夹对话框里选中上面的**当前根目录**（选中后应能看见 `manifest.json`），确认
+5. 列表里应出现「ChatGPT 提示词助手」，状态为已启用
+6. 打开或刷新 [chatgpt.com](https://chatgpt.com/)，右下角应出现蓝紫色浮动按钮
+
+扩展卡片上通常会显示已解压的本地路径。请把这条路径记下或收藏，以后更新还要用。
+
+**没有出现浮动按钮时，按下面检查：**
+
+- 有没有选错目录：若提示找不到 `manifest.json`，或加载成功但 ChatGPT 里没有按钮，多半选到了上一级或子目录
+- 当前标签是不是 `https://chatgpt.com/...`；`chat.openai.com` 或其它站点不会注入
+- 已经打开的 ChatGPT 标签在加载扩展**之后**是否刷新过；不刷新则页面里仍没有 content script
+- 扩展页是否出现重复的「ChatGPT 提示词助手」。若有两个，关掉或移除多出来的，只保留一份，避免两个浮钮、两套数据
+
+### 用本地 Agent 下载源码
+
+把下面整段复制到**能读写磁盘的**编程助手。这是独立任务，不依赖任何旧对话。Agent 完成后，你仍须按上一节的第 1–6 步在 Chrome 里加载。
+
+```text
+请把 Chrome 扩展「ChatGPT 提示词助手」的源码下载到这台电脑。
+
+仓库：https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
+
+要求：
+1. 若当前目录已经是该仓库（存在 manifest.json，且其中 "name" 为「ChatGPT 提示词助手」），不要再克隆一份，直接告诉我这个目录的绝对路径。
+2. 否则用 git clone 克隆到用户主目录下容易找到的位置；若没有 git，再下载仓库 ZIP 并解压。
+3. 克隆或解压完成后，确认该目录的第一层就有 manifest.json、content.js、ui.js、content.css。若多出 *-main 这一层，以含 manifest.json 的那一层为准。
+4. 不要执行 npm install（本项目无运行依赖）。不要用 --load-extension、不要操作 Chrome、不要打开 chrome://extensions/、不要模拟点击「加载已解压的扩展程序」。Chrome 不允许脚本把扩展写进用户正在使用的浏览器配置。
+5. 完成后只输出：
+   - 扩展根目录的绝对路径
+   - 请用户打开 chrome://extensions/，开启开发者模式，点击「加载已解压的扩展程序」，选择刚才这个根目录
+   - 请用户打开或刷新 https://chatgpt.com/ ，右下角应出现浮动按钮
+   - 请用户保存这个绝对路径，以后更新要用；更新时请使用本仓库 README 里的「用本地 Agent 更新」提示词，不必假设还在这次对话里
+```
+
+## 更新
+
+加载已解压的扩展**不会**随 GitHub 自动更新。你改完磁盘上的文件后，还要让 Chrome 和已经打开的页面都换上新脚本。
+
+1. 更新文件夹里的源码（下一节二选一）
+2. 打开 `chrome://extensions/`，在「ChatGPT 提示词助手」卡片上点 **重新加载**
+3. 刷新已经打开的 ChatGPT 标签。只重新加载扩展、不刷新页面，标签里仍运行旧版 content script
+
+不要再次「加载已解压的扩展程序」来更新，否则会装成第二份。
+
+**Git 安装的更新：** 在当初 clone 的那个目录执行 `git pull`。
+
+**ZIP 安装的更新：** 重新下载 ZIP，解压后把**新的文件覆盖进 Chrome 正在加载的那个根目录**（路径可在扩展卡片上核对），不要解压成另一个新文件夹再加载一次。
+
+### 用本地 Agent 更新
+
+更新是另一次独立任务。不要假设用户还在「帮我下载」的那次对话里，也不要假设 Agent 记得路径。把下面整段复制给能读写磁盘的编程助手。
+
+```text
+请更新这台电脑上已经在用的 Chrome 扩展「ChatGPT 提示词助手」（仓库 https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT）。
+
+这不是新安装。用户可能早在别的对话、别的工具里下载过源码，你未必知道目录在哪。
+
+请按这个顺序做：
+1. 先问用户：Chrome 里加载的扩展根目录绝对路径是什么？可提示他们到 chrome://extensions/ 打开该扩展卡片，抄下已解压路径。
+2. 若用户暂时给不出路径，再在常见位置搜索：目录中同时存在 manifest.json、content.js、ui.js，且 manifest.json 的 "name" 为「ChatGPT 提示词助手」。找到多个就列出来让用户选，不要擅自挑一个覆盖。找不到就停下来，让用户改用 README 的手动更新步骤。
+3. 确认目标目录后：
+   - 若该目录是 git 仓库且 remote 指向上述 GitHub 仓库：在该目录 git pull，不要在别处重新 clone。
+   - 若不是 git 仓库：下载该仓库最新源码，把文件覆盖进这个已有目录，保持 Chrome 正在加载的路径不变。不要新建第二个文件夹，不要再次执行「加载已解压的扩展程序」。
+4. 不要执行 npm install。不要用命令行给正在运行的 Chrome 热加载扩展。不要打开或操作 chrome:// 页面。
+5. 完成后只输出：
+   - 实际更新了哪一个绝对路径
+   - 请用户到 chrome://extensions/ 对本扩展点「重新加载」
+   - 请用户刷新已经打开的 ChatGPT 标签（只 reload 扩展不够）
+   - 若 git pull 显示已经是最新，也仍然提醒这两步，以免页面里还是旧脚本
+```
 
 ## 使用
 
