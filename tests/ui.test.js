@@ -1236,6 +1236,45 @@ test("settings dialog explains precedence and persists the bracket selection swi
   assert.equal(documentObject.activeElement, settingsButton);
 });
 
+test("settings update check shows GitHub release link only when a newer version exists", async () => {
+  const previousCheck = globalThis.PromptHelper.checkForUpdate;
+  globalThis.PromptHelper.checkForUpdate = async () => ({
+    status: "available",
+    current: "1.0.0",
+    latest: "1.1.0",
+    htmlUrl:
+      "https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT/releases/tag/v1.1.0",
+  });
+  try {
+    const { ui, documentObject } = mountUi();
+    ui.render(emptyState);
+    ui.openPanel();
+    documentObject.getElementById("phg-open-settings").click();
+
+    const checkButton = documentObject.getElementById("phg-check-update");
+    const status = documentObject.getElementById("phg-update-status");
+    const link = documentObject.getElementById("phg-open-release");
+    assert.ok(checkButton);
+    assert.equal(status.hidden, true);
+    assert.equal(link.hidden, true);
+    checkButton.click();
+    await flushTasks();
+
+    assert.match(status.textContent, /发现新版本 v1\.1\.0/u);
+    assert.equal(link.hidden, false);
+    assert.equal(
+      link.getAttribute("href"),
+      "https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT/releases/tag/v1.1.0",
+    );
+    assert.match(
+      documentObject.getElementById("phg-update-howto").textContent,
+      /重新加载/u,
+    );
+  } finally {
+    globalThis.PromptHelper.checkForUpdate = previousCheck;
+  }
+});
+
 test("dialogs trap focus, Escape closes by layer, and status is visibly announced", () => {
   const { ui, documentObject } = mountUi();
   ui.render(emptyState);

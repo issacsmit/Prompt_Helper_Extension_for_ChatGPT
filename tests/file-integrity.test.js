@@ -144,6 +144,7 @@ test("browser fixture is self-contained and loads the real runtime in manifest o
     "../../storage.js",
     "../../prompt-engine.js",
     "../../chatgpt-editor.js",
+    "../../update-check.js",
     "../../ui.js",
     "../../content.js",
     "chatgpt-composer-fixture.js",

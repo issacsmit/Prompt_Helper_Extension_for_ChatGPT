@@ -13,6 +13,7 @@ const EXPECTED_JAVASCRIPT = Object.freeze([
   "storage.js",
   "prompt-engine.js",
   "chatgpt-editor.js",
+  "update-check.js",
   "ui.js",
   "content.js",
 ]);
@@ -42,8 +43,9 @@ test("manifest declares the exact MV3 identity, version, and storage permission"
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.name, "ChatGPT 提示词助手");
-  assert.equal(manifest.version, "1.0.0");
+  assert.equal(manifest.version, "1.1.0");
   assert.deepEqual(manifest.permissions, ["storage"]);
+  assert.deepEqual(manifest.host_permissions, ["https://api.github.com/*"]);
 });
 
 test("manifest loads the content runtime in exact dependency order on chatgpt.com", () => {
@@ -69,7 +71,6 @@ test("manifest exposes only local icons and no background or extra extension sur
   });
 
   for (const prohibitedKey of [
-    "host_permissions",
     "background",
     "action",
     "browser_action",
@@ -89,5 +90,8 @@ test("manifest exposes only local icons and no background or extra extension sur
     );
   }
 
-  assert.deepEqual(collectUrls(manifest), ["https://chatgpt.com/*"]);
+  assert.deepEqual(collectUrls(manifest), [
+    "https://api.github.com/*",
+    "https://chatgpt.com/*",
+  ]);
 });

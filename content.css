@@ -150,7 +150,8 @@ html[data-theme="dark"] #phg-root {
 
 #phg-root button,
 #phg-root input,
-#phg-root textarea {
+#phg-root textarea,
+#phg-root a.phg-button {
   margin: 0;
   color: inherit;
   font: inherit;
@@ -1058,6 +1059,36 @@ html[data-theme="dark"] #phg-root {
 
 #phg-root .phg-setting-note {
   margin: 0;
+}
+
+#phg-root .phg-update-check {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid var(--phg-border);
+  border-radius: 10px;
+  background: var(--phg-card);
+}
+
+#phg-root .phg-update-status {
+  margin: 0;
+  color: var(--phg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+#phg-root .phg-update-link {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 38px;
+  align-items: center;
+  text-decoration: none;
+}
+
+#phg-root .phg-update-status[hidden],
+#phg-root .phg-update-link[hidden],
+#phg-root .phg-update-check .phg-setting-note[hidden] {
+  display: none;
 }
 
 #phg-root .phg-switch-input {

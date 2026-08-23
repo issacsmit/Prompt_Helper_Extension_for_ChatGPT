@@ -963,6 +963,7 @@
       this._listDrag = null;
       this._suppressNextClick = false;
       this._suppressNextInsert = false;
+      this._updateChecking = false;
       this._destroyed = false;
       this._onResize = () => this._handleResize();
       this._onDocumentPointerDown = (event) =>
@@ -1376,7 +1377,65 @@
         className: "phg-setting-note",
         text: "优先级：当前自定义光标 → 【光标】/[光标] → 第一处【…】 → 历史兼容占位符。只有实际命中的规则才会生效。",
       });
-      body.append(setting, priorityNote);
+      const currentVersion =
+        typeof namespace.readCurrentVersion === "function"
+          ? namespace.readCurrentVersion()
+          : "1.1.0";
+      const updateSection = createElement(this._document, "section", {
+        className: "phg-update-check",
+        attributes: { "aria-labelledby": "phg-update-title" },
+      });
+      const updateCopy = createElement(this._document, "div", {
+        className: "phg-setting-copy",
+      });
+      const updateTitle = createElement(this._document, "span", {
+        id: "phg-update-title",
+        className: "phg-setting-title",
+        text: "检查更新",
+      });
+      const updateDescription = createElement(this._document, "span", {
+        className: "phg-setting-description",
+        text: `当前版本 ${currentVersion}。只有点击下面的按钮时，才会向 GitHub 查询公开的版本号。`,
+      });
+      updateCopy.append(updateTitle, updateDescription);
+      const checkButton = createElement(this._document, "button", {
+        id: "phg-check-update",
+        className: "phg-button phg-button-secondary",
+        type: "button",
+        text: "检查更新",
+      });
+      const updateStatus = createElement(this._document, "p", {
+        id: "phg-update-status",
+        className: "phg-update-status",
+        attributes: { role: "status", "aria-live": "polite" },
+      });
+      updateStatus.hidden = true;
+      const updateLink = createElement(this._document, "a", {
+        id: "phg-open-release",
+        className: "phg-button phg-button-secondary phg-update-link",
+        text: "打开 GitHub 更新说明",
+        attributes: {
+          href: "#",
+          target: "_blank",
+          rel: "noopener noreferrer",
+          tabindex: "0",
+        },
+      });
+      updateLink.hidden = true;
+      const updateHowto = createElement(this._document, "p", {
+        id: "phg-update-howto",
+        className: "phg-setting-note",
+        text: "更新后请在扩展页点重新加载，再刷新 ChatGPT。不要再次加载已解压扩展。",
+      });
+      updateHowto.hidden = true;
+      updateSection.append(
+        updateCopy,
+        checkButton,
+        updateStatus,
+        updateLink,
+        updateHowto,
+      );
+      body.append(setting, priorityNote, updateSection);
 
       const cancelButton = createElement(this._document, "button", {
         id: "phg-cancel-dialog",
@@ -1410,6 +1469,9 @@
         if (result?.ok) {
           this.closeDialog();
         }
+      });
+      checkButton.addEventListener("click", () => {
+        void this._handleUpdateCheck(checkButton, updateStatus, updateLink, updateHowto);
       });
       checkbox.focus?.({ preventScroll: true });
       this._updateDialogState();
@@ -2317,6 +2379,70 @@
       return this._addButton?.isConnected ? this._addButton : this._launcher;
     }
 
+    async _handleUpdateCheck(checkButton, updateStatus, updateLink, updateHowto) {
+      if (this._updateChecking || this._state.busy || !updateStatus || !updateLink) {
+        return;
+      }
+      this._updateChecking = true;
+      if (checkButton) {
+        checkButton.disabled = true;
+      }
+      updateStatus.hidden = false;
+      updateStatus.textContent = "正在检查…";
+      updateLink.hidden = true;
+      if (updateHowto) {
+        updateHowto.hidden = true;
+      }
+      let result;
+      try {
+        result =
+          typeof namespace.checkForUpdate === "function"
+            ? await namespace.checkForUpdate()
+            : { status: "unavailable" };
+      } catch (_error) {
+        result = { status: "unavailable" };
+      }
+      this._updateChecking = false;
+      if (!updateStatus.isConnected) {
+        return;
+      }
+      this._renderUpdateCheckResult(result, updateStatus, updateLink, updateHowto);
+      this._updateDialogState();
+    }
+
+    _renderUpdateCheckResult(result, updateStatus, updateLink, updateHowto) {
+      updateStatus.hidden = false;
+      const releasesPage =
+        namespace.GITHUB_RELEASES_PAGE ||
+        "https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT/releases";
+      if (result?.status === "available") {
+        updateStatus.textContent = `发现新版本 v${result.latest}。`;
+        updateLink.hidden = false;
+        updateLink.setAttribute("href", result.htmlUrl);
+        updateLink.textContent = `打开 GitHub 更新说明（v${result.latest}）`;
+        if (updateHowto) {
+          updateHowto.hidden = false;
+        }
+        return;
+      }
+      if (result?.status === "current") {
+        updateStatus.textContent = `已是最新版本（v${result.current}）。`;
+        updateLink.hidden = true;
+        updateLink.removeAttribute("href");
+        if (updateHowto) {
+          updateHowto.hidden = true;
+        }
+        return;
+      }
+      updateStatus.textContent = "暂时无法检查更新。";
+      updateLink.hidden = false;
+      updateLink.setAttribute("href", result?.htmlUrl || releasesPage);
+      updateLink.textContent = "打开 GitHub 发布页";
+      if (updateHowto) {
+        updateHowto.hidden = false;
+      }
+    }
+
     _updateDialogState() {
       if (!this._dialog) {
         return;
@@ -2331,6 +2457,10 @@
         if (button) {
           button.disabled = this._state.busy;
         }
+      }
+      const checkButton = this._document.getElementById?.("phg-check-update");
+      if (checkButton) {
+        checkButton.disabled = this._state.busy || this._updateChecking;
       }
       const setting = this._document.getElementById?.(
         "phg-auto-select-bracket-placeholder",

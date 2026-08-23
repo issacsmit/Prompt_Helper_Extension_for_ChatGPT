@@ -13,9 +13,15 @@ const PRODUCTION_FILES = Object.freeze([
   "storage.js",
   "prompt-engine.js",
   "chatgpt-editor.js",
+  "update-check.js",
   "ui.js",
   "content.js",
   "content.css",
+]);
+const NETWORK_ALLOWED_FILES = Object.freeze(["update-check.js"]);
+const ALLOWED_REMOTE_URL_PREFIXES = Object.freeze([
+  "https://api.github.com/repos/issacsmit/Prompt_Helper_Extension_for_ChatGPT/",
+  "https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT/",
 ]);
 
 const FORBIDDEN_SIGNATURES = Object.freeze([
@@ -49,9 +55,16 @@ const FORBIDDEN_SIGNATURES = Object.freeze([
   },
 ]);
 
+function isAllowedRemoteUrl(url) {
+  if (url === STANDARD_SVG_NAMESPACE) {
+    return true;
+  }
+  return ALLOWED_REMOTE_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
+
 function containsForbiddenRemoteUrl(source) {
   const remoteUrls = String(source || "").match(/https?:\/\/[^\s"'`]+/giu) || [];
-  return remoteUrls.some((url) => url !== STANDARD_SVG_NAMESPACE);
+  return remoteUrls.some((url) => !isAllowedRemoteUrl(url));
 }
 
 function readManifest() {
@@ -84,6 +97,12 @@ test("production runtime contains no network, credential, model, or background i
         );
         continue;
       }
+      if (
+        signature.label === "network request primitive" &&
+        NETWORK_ALLOWED_FILES.includes(relativePath)
+      ) {
+        continue;
+      }
       assert.doesNotMatch(
         source,
         signature.pattern,
@@ -97,6 +116,12 @@ test("remote URL guard exempts only the standard SVG namespace", () => {
   const svgNamespace = "http://www.w3.org/2000/svg";
 
   assert.equal(containsForbiddenRemoteUrl(svgNamespace), false);
+  assert.equal(
+    containsForbiddenRemoteUrl(
+      "https://api.github.com/repos/issacsmit/Prompt_Helper_Extension_for_ChatGPT/releases/latest",
+    ),
+    false,
+  );
   assert.equal(containsForbiddenRemoteUrl("https://example.com/api"), true);
   assert.equal(containsForbiddenRemoteUrl("http://example.com/resource"), true);
   assert.equal(containsForbiddenRemoteUrl(`${svgNamespace}.evil`), true);

@@ -10,10 +10,11 @@
 2. `storage.js`
 3. `prompt-engine.js`
 4. `chatgpt-editor.js`
-5. `ui.js`
-6. `content.js`
+5. `update-check.js`
+6. `ui.js`
+7. `content.js`
 
-最后由 `content.js` 自动初始化。`content.css` 与脚本一起作为 content script 样式加载。生产代码不得新增联网、模型调用、凭据或后台 worker；静态守卫只扫描真正进入页面的上述运行文件，不扫描边界说明文档。
+最后由 `content.js` 自动初始化。`content.css` 与脚本一起作为 content script 样式加载。生产代码不得新增模型调用、凭据或后台 worker。除用户在插入设置中点击「检查更新」时访问 GitHub 公开 Release 接口外，不得联网；静态守卫只扫描真正进入页面的上述运行文件，不扫描边界说明文档。
 
 ## 模块职责与公开接口
 
@@ -23,6 +24,7 @@
 | `storage.js` | Chrome `storage.local` 规范化、超时、错误、快照与订阅 | `Storage`、`StorageError` |
 | `prompt-engine.js` | 解析占位符优先级，计算光标或选区范围；维护历史 | `prepareInsertion()`、`updatePlaceholderHistory()` |
 | `chatgpt-editor.js` | ChatGPT composer 定位、字符书签和非覆盖式插入 | `ChatGPTComposerAdapter` |
+| `update-check.js` | 比较 `manifest.json` 版本与 GitHub latest Release | `checkForUpdate()`、`isNewerVersion()` |
 | `ui.js` | 布局纯函数、控制器、DOM UI、CRUD、列表排序、对话框和拖拽 | `PromptHelperController`、`PromptHelperUI` 及布局辅助函数 |
 | `content.js` | 依赖装配、单例、SPA 观察和销毁 | `initializePromptHelper()`、`destroyPromptHelper()` |
 

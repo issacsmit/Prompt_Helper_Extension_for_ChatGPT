@@ -114,14 +114,15 @@
 
 ## 权限与隐私边界
 
-- [ ] `manifest.json` 仍只声明 `storage` 权限，页面匹配范围仍为 `https://chatgpt.com/*`，没有新增主机权限、后台/service worker、远端脚本或跨域能力。
-- [ ] 完成打开、CRUD、插入、拖拽、主题与 SPA 流程后，扩展没有发起网络请求、没有读取或保存 API Key，也没有上传提示词或聊天内容。
+- [ ] `manifest.json` 声明 `storage` 权限和 `https://api.github.com/*` 主机权限，页面匹配范围仍为 `https://chatgpt.com/*`，没有后台/service worker 或远端脚本。
+- [ ] 完成打开、CRUD、插入、拖拽、主题与 SPA 流程（不点检查更新）后，扩展没有发起网络请求、没有读取或保存 API Key，也没有上传提示词或聊天内容。
+- [ ] 插入设置中点击「检查更新」：已是最新、发现新版本（出现 GitHub 按钮和重新加载说明）、失败时均可理解；不点该按钮则不访问 GitHub。
 - [ ] 插入只更新输入框并触发宿主所需输入事件；发送按钮可以按 ChatGPT 规则启用，但扩展不自动发送消息。
 
 ## 控制台与网络检查
 
 - [ ] 打开 DevTools 控制台，完成 CRUD、插入、拖拽、SPA、Esc/Tab 流程后没有未捕获异常或持续警告。
-- [ ] 打开 Network 面板并清空记录，操作助手不会产生由扩展发起的网络请求。
+- [ ] 打开 Network 面板并清空记录，不点「检查更新」时操作助手不会产生由扩展发起的网络请求；点击后仅出现对 GitHub API 的请求。
 - [ ] Sources/Application 中确认没有 background/service worker、模型脚本、远端代码或 API Key 存储。
 - [ ] Application → Extension storage 中只有三个预期键，内容与当前 UI 一致。
 

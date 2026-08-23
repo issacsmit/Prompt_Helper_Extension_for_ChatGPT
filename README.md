@@ -25,7 +25,8 @@
 - 浅色、深色与系统主题自适应，编辑和删除图标会同步切换颜色
 - 在细指针设备上，提示词卡片悬停时显示编辑和删除图标；触屏设备始终显示这些操作
 - 支持 `prefers-reduced-motion` 和键盘操作（Esc 关闭、Tab 焦点循环）
-- 零运行依赖，不联网，不读取 API Key，不上传提示词或聊天内容
+- 零运行依赖，平时不联网；只有点击「检查更新」时才会向 GitHub 查询公开版本号
+- 不读取 API Key，不上传提示词或聊天内容
 
 ## 快速体验
 
@@ -117,6 +118,8 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 2. 打开 `chrome://extensions/`，在「ChatGPT 提示词助手」卡片上点 **重新加载**
 3. 刷新已经打开的 ChatGPT 标签。只重新加载扩展、不刷新页面，标签里仍运行旧版 content script
 
+也可在插入设置中点击「检查更新」。若发现新版本，会给出打开 GitHub 说明的按钮；更新文件后仍须重新加载扩展并刷新 ChatGPT。
+
 不要再次「加载已解压的扩展程序」来更新，否则会装成第二份。
 
 **Git 安装的更新：** 打开当初 `git clone` 出来的那个目录，执行 `git pull`。这只会把该目录里的文件更新到 GitHub 最新，不会另外克隆一份。`git pull` 之后仍须做上面的第 2、3 步（扩展页重新加载，再刷新 ChatGPT）。
@@ -184,6 +187,7 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 ├── storage.js           # chrome.storage.local 访问与同步
 ├── prompt-engine.js     # 占位符匹配与光标位置计算
 ├── chatgpt-editor.js    # ChatGPT 输入框定位与插入适配
+├── update-check.js      # 手动检查 GitHub Release
 ├── ui.js                # 面板、对话框、CRUD 与拖拽
 ├── content.js           # 初始化、单例与 SPA 生命周期
 ├── content.css          # 明暗主题与组件样式
@@ -218,9 +222,9 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 
 ## 隐私与权限
 
-- 扩展只声明 `storage` 权限，仅在 chatgpt.com（`https://chatgpt.com/*`）页面运行
+- 扩展声明 `storage` 权限，以及仅为检查更新准备的 `https://api.github.com/*` 主机权限；仅在 chatgpt.com（`https://chatgpt.com/*`）页面运行
 - 提示词、占位符历史和浮动按钮位置只保存在 Chrome 本地扩展存储中
-- 扩展不发起网络请求，不调用模型服务，也不读取或保存 API Key
+- 平时不联网。只有你点击「检查更新」时，才会访问 GitHub 的公开 Release 接口；不调用模型服务，也不读取或保存 API Key
 - 扩展不会上传提示词或聊天内容；插入后是否发送始终由用户决定
 - 本项目不隶属于 OpenAI；“ChatGPT”只用于说明适配的网页产品
 

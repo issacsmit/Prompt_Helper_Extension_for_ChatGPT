@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT 提示词助手",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "在 ChatGPT 页面本地管理并插入常用提示词。",
   "permissions": ["storage"],
+  "host_permissions": ["https://api.github.com/*"],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -17,6 +18,7 @@
         "storage.js",
         "prompt-engine.js",
         "chatgpt-editor.js",
+        "update-check.js",
         "ui.js",
         "content.js"
       ],
