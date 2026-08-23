@@ -162,6 +162,23 @@
     return clamp(fromIndex + Math.sign(slotsMoved) * steps, 0, last);
   }
 
+  function clampDragDelta(fromIndex, deltaY, stride, count) {
+    const last = Math.max(0, (Number.isInteger(count) ? count : 0) - 1);
+    const spacing = finiteNumber(stride);
+    const offset = finiteNumber(deltaY);
+    if (!Number.isFinite(offset)) {
+      return 0;
+    }
+    if (!Number.isInteger(fromIndex) || last === 0 || !Number.isFinite(spacing) || spacing <= 0) {
+      return offset;
+    }
+    return clamp(
+      offset,
+      0 - fromIndex * spacing,
+      (last - fromIndex) * spacing,
+    );
+  }
+
   function listDragShift(fromIndex, toIndex, index, stride) {
     const distance = finiteNumber(stride);
     if (
@@ -2029,7 +2046,12 @@
       }
       const scrollDelta =
         finiteNumber(this._list.parentElement?.scrollTop) - drag.scrollTop;
-      const deltaY = clientY - drag.start.y + scrollDelta;
+      const deltaY = clampDragDelta(
+        drag.fromIndex,
+        clientY - drag.start.y + scrollDelta,
+        drag.stride,
+        drag.cards.length,
+      );
       drag.toIndex = dropIndexFromDisplacement(
         drag.fromIndex,
         deltaY,
@@ -2456,6 +2478,7 @@
     getFocusCycleTarget,
     isDragGesture,
     dropIndexFromDisplacement,
+    clampDragDelta,
     listDragShift,
     reorderRecords,
     PromptHelperController,

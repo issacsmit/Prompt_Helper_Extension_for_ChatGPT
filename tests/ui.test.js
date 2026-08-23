@@ -24,6 +24,7 @@ test("ui exposes pure layout helpers through CommonJS and PromptHelper", () => {
   assert.equal(typeof uiApi.getFocusCycleTarget, "function");
   assert.equal(typeof uiApi.isDragGesture, "function");
   assert.equal(typeof uiApi.dropIndexFromDisplacement, "function");
+  assert.equal(typeof uiApi.clampDragDelta, "function");
   assert.equal(typeof uiApi.listDragShift, "function");
   assert.equal(typeof uiApi.reorderRecords, "function");
   assert.equal(
@@ -123,6 +124,14 @@ test("list drag shifts neighbors out of the moving card's path", () => {
   assert.equal(uiApi.listDragShift(2, 0, 1, 71), 71);
   assert.equal(uiApi.listDragShift(2, 0, 2, 71), 0);
   assert.equal(uiApi.listDragShift(1, 1, 0, 71), 0);
+});
+
+test("drag translation stops at the first and last slots", () => {
+  assert.equal(uiApi.clampDragDelta(0, 160, 71, 3), 142);
+  assert.equal(uiApi.clampDragDelta(0, 999, 71, 3), 142);
+  assert.equal(uiApi.clampDragDelta(2, -999, 71, 3), -142);
+  assert.equal(uiApi.clampDragDelta(1, 20, 71, 3), 20);
+  assert.equal(uiApi.clampDragDelta(0, -40, 71, 3), 0);
 });
 
 test("drop index follows card travel to the nearest slot, not pointer midpoints", () => {
@@ -911,9 +920,18 @@ test("dragging a prompt handle past the threshold reorders without inserting", a
     documentObject.getElementById("phg-prompt-list").getAttribute("data-phg-reordering"),
     "true",
   );
-  assert.equal(cards[0].style.transform, "translate3d(0, 160px, 0)");
+  assert.equal(cards[0].style.transform, "translate3d(0, 142px, 0)");
   assert.equal(cards[1].style.transform, "translate3d(0, -71px, 0)");
   assert.equal(cards[2].style.transform, "translate3d(0, -71px, 0)");
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointermove", {
+      pointerId: 11,
+      clientX: 20,
+      clientY: 800,
+      bubbles: true,
+    }),
+  );
+  assert.equal(cards[0].style.transform, "translate3d(0, 142px, 0)");
   documentObject.getElementById("phg-prompt-list").dispatchEvent(
     new FakeEvent("pointerup", {
       pointerId: 11,
