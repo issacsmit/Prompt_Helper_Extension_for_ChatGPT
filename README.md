@@ -245,3 +245,7 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 `npm run verify` 会先检查生产与测试 JavaScript 语法，再运行 Node.js 全量测试。项目不需要执行 `npm install`。
 
 更多实现细节见 [DEVELOPMENT.md](DEVELOPMENT.md)，真实 ChatGPT 页面回归步骤见 [TEST_CHECKLIST.md](TEST_CHECKLIST.md)。本地合成页面可通过 `tests/fixtures/chatgpt-composer.html` 验证 CRUD、插入、主题、拖拽和 SPA 重建流程。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE)。
