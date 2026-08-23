@@ -454,6 +454,7 @@ html[data-theme="dark"] #phg-root {
 }
 
 #phg-root .phg-prompt-list {
+  position: relative;
   display: grid;
   gap: 7px;
   padding: 10px 10px 12px;
@@ -463,7 +464,7 @@ html[data-theme="dark"] #phg-root {
   position: relative;
   display: grid;
   min-height: 58px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   overflow: hidden;
@@ -505,6 +506,35 @@ html[data-theme="dark"] #phg-root {
   transform: scaleY(1);
 }
 
+#phg-root .phg-card-drag {
+  display: grid;
+  width: 28px;
+  min-width: 28px;
+  min-height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--phg-icon-muted);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+#phg-root .phg-card-drag:hover {
+  background: var(--phg-action-bg);
+  color: var(--phg-text);
+}
+
+#phg-root .phg-card-drag-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
 #phg-root .phg-card-main {
   display: grid;
   min-width: 0;
@@ -518,6 +548,43 @@ html[data-theme="dark"] #phg-root {
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+#phg-root .phg-prompt-list[data-phg-reordering="true"] {
+  cursor: grabbing;
+  user-select: none;
+  touch-action: none;
+}
+
+#phg-root .phg-prompt-list[data-phg-reordering="true"] .phg-prompt-card,
+#phg-root .phg-panel[data-phg-state="open"] .phg-prompt-list[data-phg-reordering="true"] .phg-prompt-card {
+  opacity: 1;
+}
+
+#phg-root .phg-prompt-list[data-phg-reordering="true"] .phg-prompt-card:not([data-phg-dragging="true"]) {
+  pointer-events: none;
+  transition: transform 180ms var(--phg-spring);
+}
+
+#phg-root .phg-prompt-card[data-phg-dragging="true"] {
+  z-index: 2;
+  overflow: visible;
+  border-color: var(--phg-border-strong);
+  background: var(--phg-card-hover);
+  box-shadow: var(--phg-status-shadow);
+  opacity: 1;
+  pointer-events: none;
+  transition: none !important;
+  will-change: transform;
+}
+
+#phg-root .phg-prompt-card[data-phg-dragging="true"]::before {
+  transform: scaleY(1);
+}
+
+#phg-root .phg-prompt-card[data-phg-dragging="true"] .phg-card-drag {
+  cursor: grabbing;
+  color: var(--phg-text);
 }
 
 #phg-root .phg-card-name,
@@ -809,6 +876,7 @@ html[data-theme="dark"] #phg-root {
 #phg-root .phg-icon-button:disabled,
 #phg-root .phg-card-main:disabled,
 #phg-root .phg-card-action:disabled,
+#phg-root .phg-card-drag:disabled,
 #phg-root .phg-history-value:disabled,
 #phg-root .phg-history-delete:disabled,
 #phg-root .phg-launcher:disabled {
@@ -820,6 +888,7 @@ html[data-theme="dark"] #phg-root {
 #phg-root .phg-icon-button:focus-visible,
 #phg-root .phg-card-main:focus-visible,
 #phg-root .phg-card-action:focus-visible,
+#phg-root .phg-card-drag:focus-visible,
 #phg-root .phg-history-value:focus-visible,
 #phg-root .phg-history-delete:focus-visible {
   outline: 2px solid var(--phg-focus-ring);
@@ -1144,7 +1213,8 @@ html[data-theme="dark"] #phg-root {
     transform: none;
   }
 
-  #phg-root .phg-card-action {
+  #phg-root .phg-card-action,
+  #phg-root .phg-card-drag {
     min-width: 44px;
     min-height: 44px;
   }
@@ -1187,6 +1257,7 @@ html[data-theme="dark"] #phg-root {
   #phg-root .phg-panel,
   #phg-root .phg-prompt-card,
   #phg-root .phg-prompt-card::before,
+  #phg-root .phg-prompt-list[data-phg-reordering="true"] .phg-prompt-card:not([data-phg-dragging="true"]),
   #phg-root .phg-empty,
   #phg-root .phg-empty::before,
   #phg-root .phg-card-actions,
@@ -1216,8 +1287,8 @@ html[data-theme="dark"] #phg-root {
   #phg-root .phg-launcher-pointer,
   #phg-root .phg-panel,
   #phg-root .phg-panel[data-phg-state="open"],
-  #phg-root .phg-prompt-card,
-  #phg-root .phg-panel[data-phg-state="open"] .phg-prompt-card,
+  #phg-root .phg-prompt-list:not([data-phg-reordering="true"]) .phg-prompt-card,
+  #phg-root .phg-panel[data-phg-state="open"] .phg-prompt-list:not([data-phg-reordering="true"]) .phg-prompt-card,
   #phg-root .phg-prompt-card::before,
   #phg-root .phg-prompt-card:hover::before,
   #phg-root .phg-prompt-card:focus-within::before,

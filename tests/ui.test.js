@@ -23,6 +23,9 @@ test("ui exposes pure layout helpers through CommonJS and PromptHelper", () => {
   assert.equal(typeof uiApi.calculatePanelPosition, "function");
   assert.equal(typeof uiApi.getFocusCycleTarget, "function");
   assert.equal(typeof uiApi.isDragGesture, "function");
+  assert.equal(typeof uiApi.dropIndexFromDisplacement, "function");
+  assert.equal(typeof uiApi.listDragShift, "function");
+  assert.equal(typeof uiApi.reorderRecords, "function");
   assert.equal(
     globalThis.PromptHelper?.clampFloatingPosition,
     uiApi.clampFloatingPosition,
@@ -110,6 +113,46 @@ test("dragging begins only after pointer movement exceeds the threshold", () => 
   assert.equal(uiApi.isDragGesture(start, { x: 16, y: 10 }, 5), true);
   assert.equal(uiApi.isDragGesture(start, { x: 99, y: 99 }, -1), true);
   assert.equal(uiApi.isDragGesture(null, { x: 20, y: 20 }, 5), false);
+});
+
+test("list drag shifts neighbors out of the moving card's path", () => {
+  assert.equal(uiApi.listDragShift(0, 2, 0, 71), 0);
+  assert.equal(uiApi.listDragShift(0, 2, 1, 71), -71);
+  assert.equal(uiApi.listDragShift(0, 2, 2, 71), -71);
+  assert.equal(uiApi.listDragShift(2, 0, 0, 71), 71);
+  assert.equal(uiApi.listDragShift(2, 0, 1, 71), 71);
+  assert.equal(uiApi.listDragShift(2, 0, 2, 71), 0);
+  assert.equal(uiApi.listDragShift(1, 1, 0, 71), 0);
+});
+
+test("drop index follows card travel to the nearest slot, not pointer midpoints", () => {
+  assert.equal(uiApi.dropIndexFromDisplacement(0, 0, 71, 3), 0);
+  assert.equal(uiApi.dropIndexFromDisplacement(0, 35, 71, 3), 0);
+  assert.equal(uiApi.dropIndexFromDisplacement(0, 36, 71, 3), 1);
+  assert.equal(uiApi.dropIndexFromDisplacement(1, -36, 71, 3), 0);
+  assert.equal(uiApi.dropIndexFromDisplacement(1, 36, 71, 3), 2);
+  assert.equal(uiApi.dropIndexFromDisplacement(0, 160, 71, 3), 2);
+  assert.equal(uiApi.dropIndexFromDisplacement(2, -160, 71, 3), 0);
+  assert.equal(uiApi.dropIndexFromDisplacement(0, 999, 71, 3), 2);
+  assert.equal(uiApi.dropIndexFromDisplacement(0, 10, 0, 3), 0);
+});
+
+test("reorderRecords rebuilds the same records in the requested id order", () => {
+  const records = [
+    { id: "a", name: "甲" },
+    { id: "b", name: "乙" },
+    { id: "c", name: "丙" },
+  ];
+
+  assert.deepEqual(uiApi.reorderRecords(records, ["c", "a", "b"]).map((entry) => entry.id), [
+    "c",
+    "a",
+    "b",
+  ]);
+  assert.equal(uiApi.reorderRecords(records, ["a", "b"]), null);
+  assert.equal(uiApi.reorderRecords(records, ["a", "b", "a"]), null);
+  assert.equal(uiApi.reorderRecords(records, ["a", "b", "missing"]), null);
+  assert.deepEqual(uiApi.reorderRecords([], []), []);
 });
 
 class FakeEventTarget {
@@ -211,6 +254,7 @@ class FakeElement extends FakeEventTarget {
     this.type = "";
     this._textContent = "";
     this._capturedPointers = new Set();
+    this.scrollTop = 0;
   }
 
   get parentElement() {
@@ -305,6 +349,38 @@ class FakeElement extends FakeEventTarget {
     return child;
   }
 
+  insertBefore(node, referenceNode) {
+    if (node === referenceNode) {
+      return node;
+    }
+    if (node?.parentNode) {
+      node.parentNode.removeChild(node);
+    }
+    if (referenceNode == null) {
+      this.children.push(node);
+    } else {
+      const index = this.children.indexOf(referenceNode);
+      this.children.splice(index < 0 ? this.children.length : index, 0, node);
+    }
+    if (node) {
+      node.parentNode = this;
+    }
+    return node;
+  }
+
+  before(node) {
+    this.parentNode?.insertBefore(node, this);
+  }
+
+  after(node) {
+    const parent = this.parentNode;
+    if (!parent) {
+      return;
+    }
+    const next = parent.children[parent.children.indexOf(this) + 1] || null;
+    parent.insertBefore(node, next);
+  }
+
   replaceChildren(...children) {
     for (const child of this.children) {
       child.parentNode = null;
@@ -330,7 +406,9 @@ class FakeElement extends FakeEventTarget {
   }
 
   matches(selector) {
-    return matchesFakeSelector(this, selector);
+    return String(selector)
+      .split(",")
+      .some((part) => matchesFakeSelector(this, part.trim()));
   }
 
   closest(selector) {
@@ -390,6 +468,23 @@ class FakeElement extends FakeEventTarget {
   }
 
   getBoundingClientRect() {
+    if (this.classList.contains("phg-prompt-card") && this.parentNode?.children) {
+      const siblings = this.parentNode.children.filter((child) =>
+        child.classList?.contains("phg-prompt-card"),
+      );
+      const index = Math.max(0, siblings.indexOf(this));
+      const height = 64;
+      const gap = 7;
+      const top = index * (height + gap);
+      return {
+        left: 0,
+        top,
+        right: 320,
+        bottom: top + height,
+        width: 320,
+        height,
+      };
+    }
     const width = this.id === "phg-launcher" ? 50 : this.id === "phg-panel" ? 360 : 400;
     const height = this.id === "phg-launcher" ? 52 : this.id === "phg-panel" ? 300 : 320;
     const left = Number.parseFloat(this.style.left) || 0;
@@ -517,6 +612,7 @@ function createControllerStub() {
     bookmarkCalls: 0,
     insertCalls: [],
     saveCalls: [],
+    reorderCalls: [],
     deleteCalls: [],
     historyDeleteCalls: [],
     positionCalls: [],
@@ -535,6 +631,10 @@ function createControllerStub() {
     async savePrompt(record) {
       this.saveCalls.push(cloneValue(record));
       return this.nextSaveResult;
+    },
+    async reorderPrompts(orderedIds) {
+      this.reorderCalls.push(cloneValue(orderedIds));
+      return { ok: true };
     },
     async deletePrompt(id) {
       this.deleteCalls.push(id);
@@ -725,6 +825,12 @@ test("render shows empty state or accessible prompt cards and dispatches CRUD ac
   assert.ok(card.querySelector(".phg-card-action-danger"));
   assert.match(documentObject.getElementById("phg-prompt-list").textContent, /代码审查/u);
 
+  const dragButton = card.querySelector('[data-phg-action="reorder"]');
+  assert.ok(dragButton);
+  assert.equal(dragButton.getAttribute("title"), "拖动调整顺序");
+  assert.match(dragButton.getAttribute("aria-label"), /拖动调整顺序/u);
+  assert.equal(dragButton.querySelector("svg").getAttribute("data-phg-icon"), "reorder");
+
   const editButton = card.querySelector('[data-phg-action="edit"]');
   const deleteButton = card.querySelector('[data-phg-action="delete"]');
   for (const [button, kind, label] of [
@@ -771,6 +877,213 @@ test("render shows empty state or accessible prompt cards and dispatches CRUD ac
   documentObject.getElementById("phg-confirm-delete").click();
   await flushTasks();
   assert.deepEqual(controller.deleteCalls, ["one"]);
+});
+
+test("dragging a prompt handle past the threshold reorders without inserting", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  const prompts = [
+    { id: "a", name: "甲", prompt: "一" },
+    { id: "b", name: "乙", prompt: "二" },
+    { id: "c", name: "丙", prompt: "三" },
+  ];
+  ui.render({ ...emptyState, prompts });
+  const handle = documentObject.querySelector('[data-phg-action="reorder"]');
+
+  handle.dispatchEvent(
+    new FakeEvent("pointerdown", {
+      pointerId: 11,
+      clientX: 20,
+      clientY: 20,
+      button: 0,
+      bubbles: true,
+    }),
+  );
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointermove", {
+      pointerId: 11,
+      clientX: 20,
+      clientY: 180,
+      bubbles: true,
+    }),
+  );
+  const cards = documentObject.querySelectorAll(".phg-prompt-card");
+  assert.equal(
+    documentObject.getElementById("phg-prompt-list").getAttribute("data-phg-reordering"),
+    "true",
+  );
+  assert.equal(cards[0].style.transform, "translate3d(0, 160px, 0)");
+  assert.equal(cards[1].style.transform, "translate3d(0, -71px, 0)");
+  assert.equal(cards[2].style.transform, "translate3d(0, -71px, 0)");
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointerup", {
+      pointerId: 11,
+      clientX: 20,
+      clientY: 180,
+      bubbles: true,
+    }),
+  );
+  await flushTasks();
+
+  assert.deepEqual(controller.reorderCalls, [["b", "c", "a"]]);
+  assert.deepEqual(controller.insertCalls, []);
+  assert.equal(
+    documentObject.getElementById("phg-prompt-list").getAttribute("data-phg-reordering"),
+    null,
+  );
+  assert.equal(cards[0].style.transform, "");
+});
+
+test("dragging a prompt card body reorders and suppresses the following insert click", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render({
+    ...emptyState,
+    prompts: [
+      { id: "a", name: "甲", prompt: "一" },
+      { id: "b", name: "乙", prompt: "二" },
+      { id: "c", name: "丙", prompt: "三" },
+    ],
+  });
+  const main = documentObject.querySelector('[data-phg-action="insert"]');
+  main.dispatchEvent(
+    new FakeEvent("pointerdown", {
+      pointerId: 13,
+      clientX: 40,
+      clientY: 20,
+      button: 0,
+      pointerType: "mouse",
+      bubbles: true,
+    }),
+  );
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointermove", {
+      pointerId: 13,
+      clientX: 40,
+      clientY: 180,
+      bubbles: true,
+    }),
+  );
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointerup", {
+      pointerId: 13,
+      clientX: 40,
+      clientY: 180,
+      bubbles: true,
+    }),
+  );
+  main.click();
+  await flushTasks();
+
+  assert.deepEqual(controller.reorderCalls, [["b", "c", "a"]]);
+  assert.deepEqual(controller.insertCalls, []);
+});
+
+test("touch pointers on a prompt body do not start reordering", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render({
+    ...emptyState,
+    prompts: [
+      { id: "a", name: "甲", prompt: "一" },
+      { id: "b", name: "乙", prompt: "二" },
+    ],
+  });
+  const main = documentObject.querySelector('[data-phg-action="insert"]');
+  main.dispatchEvent(
+    new FakeEvent("pointerdown", {
+      pointerId: 14,
+      clientX: 40,
+      clientY: 20,
+      button: 0,
+      pointerType: "touch",
+      bubbles: true,
+    }),
+  );
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointermove", {
+      pointerId: 14,
+      clientX: 40,
+      clientY: 180,
+      bubbles: true,
+    }),
+  );
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointerup", {
+      pointerId: 14,
+      clientX: 40,
+      clientY: 180,
+      bubbles: true,
+    }),
+  );
+  await flushTasks();
+
+  assert.deepEqual(controller.reorderCalls, []);
+  assert.equal(
+    documentObject.getElementById("phg-prompt-list").getAttribute("data-phg-reordering"),
+    null,
+  );
+});
+
+test("a sub-threshold pointer gesture on a card still inserts", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render({
+    ...emptyState,
+    prompts: [
+      { id: "a", name: "甲", prompt: "一" },
+      { id: "b", name: "乙", prompt: "二" },
+    ],
+  });
+  const main = documentObject.querySelector('[data-phg-action="insert"]');
+  main.dispatchEvent(
+    new FakeEvent("pointerdown", {
+      pointerId: 12,
+      clientX: 40,
+      clientY: 20,
+      button: 0,
+      pointerType: "mouse",
+      bubbles: true,
+    }),
+  );
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointermove", {
+      pointerId: 12,
+      clientX: 42,
+      clientY: 22,
+      bubbles: true,
+    }),
+  );
+  documentObject.getElementById("phg-prompt-list").dispatchEvent(
+    new FakeEvent("pointerup", {
+      pointerId: 12,
+      clientX: 42,
+      clientY: 22,
+      bubbles: true,
+    }),
+  );
+  main.click();
+  await flushTasks();
+
+  assert.deepEqual(controller.reorderCalls, []);
+  assert.deepEqual(controller.insertCalls, ["a"]);
+});
+
+test("arrow keys on the drag handle move a prompt by one slot", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render({
+    ...emptyState,
+    prompts: [
+      { id: "a", name: "甲", prompt: "一" },
+      { id: "b", name: "乙", prompt: "二" },
+      { id: "c", name: "丙", prompt: "三" },
+    ],
+  });
+  const handle = documentObject.querySelector('[data-phg-action="reorder"]');
+  handle.focus();
+  handle.dispatchEvent(
+    new FakeEvent("keydown", { key: "ArrowDown", bubbles: true }),
+  );
+  await flushTasks();
+
+  assert.deepEqual(controller.reorderCalls, [["b", "a", "c"]]);
+  assert.deepEqual(controller.insertCalls, []);
 });
 
 test("edit and delete card actions stop bubbling without invoking insertion", async () => {
@@ -1112,6 +1425,18 @@ test("content stylesheet encodes Quiet Orbit visuals and interaction states", ()
   assert.match(css, /nth-child\(3\)[\s\S]*109ms/u);
   assert.match(css, /\.phg-prompt-card:hover[\s\S]*\.phg-card-actions/u);
   assert.match(css, /\.phg-prompt-card:focus-within[\s\S]*\.phg-card-actions/u);
+  assert.match(css, /grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/u);
+  assert.match(css, /\.phg-card-drag\s*\{[^}]*cursor:\s*grab/su);
+  assert.match(css, /\.phg-prompt-card\[data-phg-dragging="true"\]/u);
+  assert.match(css, /\.phg-prompt-list\[data-phg-reordering="true"\]/u);
+  assert.match(
+    css,
+    /\.phg-prompt-list\[data-phg-reordering="true"\] \.phg-prompt-card:not\(\[data-phg-dragging="true"\]\)\s*\{[^}]*transition:\s*transform/su,
+  );
+  assert.match(
+    css,
+    /\.phg-prompt-card\[data-phg-dragging="true"\]\s*\{[^}]*will-change:\s*transform/su,
+  );
   assert.match(css, /@media[^\{]*pointer:\s*coarse/u);
   assert.match(css, /prefers-reduced-motion:\s*reduce/u);
   assert.match(css, /html\.dark\s+#phg-root/u);

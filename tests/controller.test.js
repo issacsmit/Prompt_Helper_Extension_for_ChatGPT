@@ -198,6 +198,7 @@ test("controller is exposed and instances provide the task actions", () => {
     "deletePrompt",
     "deletePlaceholderHistory",
     "insertPrompt",
+    "reorderPrompts",
     "saveButtonPosition",
     "setAutoSelectBracketPlaceholder",
     "captureBookmark",
@@ -322,6 +323,65 @@ test("add, edit, and delete commit only persisted candidate states", async () =>
     prompts: [],
     placeholderHistory: ["<位置>"],
   });
+});
+
+test("reorder persists a new prompt order and ignores identical or invalid ids", async () => {
+  const prompts = [
+    { id: "a", name: "甲", prompt: "一", placeholder: DEFAULT_PLACEHOLDER },
+    { id: "b", name: "乙", prompt: "二", placeholder: DEFAULT_PLACEHOLDER },
+    { id: "c", name: "丙", prompt: "三", placeholder: DEFAULT_PLACEHOLDER },
+  ];
+  const { controller, storage, view } = createController({
+    initialState: { prompts, placeholderHistory: ["<旧>"] },
+  });
+  await controller.initialize();
+
+  assert.deepEqual(await controller.reorderPrompts(["a", "b", "c"]), { ok: true });
+  assert.equal(storage.promptSaves.length, 0);
+
+  const rendersBeforeReorder = view.renders.length;
+  assert.deepEqual(await controller.reorderPrompts(["c", "a", "b"]), { ok: true });
+  assert.equal(
+    view.renders.slice(rendersBeforeReorder).some((state) => state.busy),
+    false,
+  );
+  assert.deepEqual(
+    controller.getState().prompts.map((record) => record.id),
+    ["c", "a", "b"],
+  );
+  assert.deepEqual(storage.promptSaves.at(-1), {
+    prompts: [prompts[2], prompts[0], prompts[1]],
+    placeholderHistory: ["<旧>"],
+  });
+
+  const invalid = await controller.reorderPrompts(["c", "missing"]);
+  assert.deepEqual(invalid, { ok: false, code: "INVALID_ORDER" });
+  assert.deepEqual(
+    controller.getState().prompts.map((record) => record.id),
+    ["c", "a", "b"],
+  );
+  assert.match(view.statuses.at(-1).message, /无法调整提示词顺序/u);
+});
+
+test("failed reorder restores the previous prompt order", async () => {
+  const prompts = [
+    { id: "a", name: "甲", prompt: "一", placeholder: DEFAULT_PLACEHOLDER },
+    { id: "b", name: "乙", prompt: "二", placeholder: DEFAULT_PLACEHOLDER },
+  ];
+  const { controller, storage, view } = createController({
+    initialState: { prompts },
+  });
+  await controller.initialize();
+  storage.nextSaveError = new Error("quota");
+
+  const result = await controller.reorderPrompts(["b", "a"]);
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    controller.getState().prompts.map((record) => record.id),
+    ["a", "b"],
+  );
+  assert.match(view.statuses.at(-1).message, /调整顺序失败/u);
 });
 
 test("failed prompt writes restore the full list and history and remain retryable", async () => {

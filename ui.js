@@ -147,6 +147,102 @@
     return deltaX * deltaX + deltaY * deltaY > safeThreshold * safeThreshold;
   }
 
+  function dropIndexFromDisplacement(fromIndex, deltaY, stride, count) {
+    const last = Math.max(0, (Number.isInteger(count) ? count : 0) - 1);
+    if (!Number.isInteger(fromIndex) || last === 0) {
+      return 0;
+    }
+    const spacing = finiteNumber(stride);
+    const offset = finiteNumber(deltaY);
+    if (!Number.isFinite(spacing) || spacing <= 0 || !Number.isFinite(offset)) {
+      return clamp(fromIndex, 0, last);
+    }
+    const slotsMoved = offset / spacing;
+    const steps = Math.round(Math.abs(slotsMoved));
+    return clamp(fromIndex + Math.sign(slotsMoved) * steps, 0, last);
+  }
+
+  function listDragShift(fromIndex, toIndex, index, stride) {
+    const distance = finiteNumber(stride);
+    if (
+      !Number.isInteger(fromIndex) ||
+      !Number.isInteger(toIndex) ||
+      !Number.isInteger(index) ||
+      index === fromIndex ||
+      !Number.isFinite(distance)
+    ) {
+      return 0;
+    }
+    if (fromIndex < toIndex && index > fromIndex && index <= toIndex) {
+      return -distance;
+    }
+    if (fromIndex > toIndex && index >= toIndex && index < fromIndex) {
+      return distance;
+    }
+    return 0;
+  }
+
+  function promptPreviewText(prompt) {
+    const previewText = String(prompt || "").replace(/\s+/gu, " ").trim();
+    return previewText || "（正文为空）";
+  }
+
+  function moveIds(ids, fromIndex, toIndex) {
+    if (!Array.isArray(ids)) {
+      return [];
+    }
+    if (
+      !Number.isInteger(fromIndex) ||
+      !Number.isInteger(toIndex) ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= ids.length ||
+      toIndex >= ids.length
+    ) {
+      return [...ids];
+    }
+    const next = [...ids];
+    if (fromIndex !== toIndex) {
+      const [id] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, id);
+    }
+    return next;
+  }
+
+  function reorderRecords(records, orderedIds) {
+    if (!Array.isArray(records) || !Array.isArray(orderedIds)) {
+      return null;
+    }
+    if (records.length !== orderedIds.length) {
+      return null;
+    }
+    if (records.length === 0) {
+      return [];
+    }
+
+    const byId = new Map();
+    for (const record of records) {
+      if (!record || typeof record.id !== "string" || byId.has(record.id)) {
+        return null;
+      }
+      byId.set(record.id, record);
+    }
+    if (byId.size !== records.length) {
+      return null;
+    }
+
+    const next = [];
+    const seen = new Set();
+    for (const id of orderedIds) {
+      if (typeof id !== "string" || !byId.has(id) || seen.has(id)) {
+        return null;
+      }
+      seen.add(id);
+      next.push({ ...byId.get(id) });
+    }
+    return next;
+  }
+
   function clonePrompts(prompts) {
     return Array.isArray(prompts)
       ? prompts.map((record) => ({ ...record }))
@@ -313,6 +409,26 @@
         candidatePrompts,
         this._state.placeholderHistory,
         "删除失败，请重试。",
+      );
+    }
+
+    async reorderPrompts(orderedIds) {
+      if (!this._canWrite()) {
+        return this._busyResult();
+      }
+      const next = reorderRecords(this._state.prompts, orderedIds);
+      if (!next) {
+        this._showStatus("无法调整提示词顺序，请刷新后重试。", "error");
+        return { ok: false, code: "INVALID_ORDER" };
+      }
+      if (next.every((record, index) => record.id === this._state.prompts[index].id)) {
+        return { ok: true };
+      }
+      return this._persistPromptCandidate(
+        next,
+        this._state.placeholderHistory,
+        "调整顺序失败，请重试。",
+        { optimistic: true, silent: true },
       );
     }
 
@@ -499,10 +615,21 @@
       );
     }
 
-    async _persistPromptCandidate(candidatePrompts, candidateHistory, errorMessage) {
+    async _persistPromptCandidate(
+      candidatePrompts,
+      candidateHistory,
+      errorMessage,
+      options = {},
+    ) {
       const snapshot = cloneControllerState(this._state);
       this._state.busy = true;
-      this._render();
+      if (options.optimistic) {
+        this._state.prompts = clonePrompts(candidatePrompts);
+        this._state.placeholderHistory = [...candidateHistory];
+      }
+      if (!options.silent) {
+        this._render();
+      }
       try {
         await this._storage.savePrompts(candidatePrompts, candidateHistory);
         this._state = {
@@ -668,6 +795,30 @@
     return wrapper;
   }
 
+  function createCardDragIcon(documentObject) {
+    const icon = createSvgElement(documentObject, "svg", {
+      viewBox: "0 0 20 20",
+      width: "16",
+      height: "16",
+      fill: "currentColor",
+      focusable: "false",
+      "aria-hidden": "true",
+      "data-phg-icon": "reorder",
+      class: "phg-card-drag-icon",
+    });
+    for (const [cx, cy] of [
+      [7, 5],
+      [13, 5],
+      [7, 10],
+      [13, 10],
+      [7, 15],
+      [13, 15],
+    ]) {
+      icon.append(createSvgElement(documentObject, "circle", { cx, cy, r: "1.45" }));
+    }
+    return icon;
+  }
+
   function createCardActionIcon(documentObject, kind) {
     const icon = createSvgElement(documentObject, "svg", {
       viewBox: "0 0 20 20",
@@ -792,7 +943,9 @@
       this._state = cloneControllerState({});
       this._buttonPosition = null;
       this._drag = null;
+      this._listDrag = null;
       this._suppressNextClick = false;
+      this._suppressNextInsert = false;
       this._destroyed = false;
       this._onResize = () => this._handleResize();
       this._onDocumentPointerDown = (event) =>
@@ -1336,6 +1489,7 @@
       }
       this._destroyed = true;
       this.closeDialog({ restoreFocus: false });
+      this._clearListDrag(false);
       this._window?.removeEventListener?.("resize", this._onResize);
       this._document?.removeEventListener?.(
         "pointerdown",
@@ -1390,6 +1544,21 @@
         this.openPromptDialog(null, event.currentTarget),
       );
       this._list.addEventListener("click", (event) => this._handleListClick(event));
+      this._list.addEventListener("pointerdown", (event) =>
+        this._handleListPointerDown(event),
+      );
+      this._list.addEventListener("pointermove", (event) =>
+        this._handleListPointerMove(event),
+      );
+      this._list.addEventListener("pointerup", (event) =>
+        this._handleListPointerEnd(event),
+      );
+      this._list.addEventListener("pointercancel", (event) =>
+        this._handleListPointerEnd(event, true),
+      );
+      this._list.addEventListener("keydown", (event) =>
+        this._handleListKeyDown(event),
+      );
       this._panel.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && !this._dialogLayer) {
           event.preventDefault();
@@ -1415,69 +1584,189 @@
     }
 
     _renderPromptList() {
-      this._list.replaceChildren();
-      const fragmentChildren = [];
-      for (const record of this._state.prompts) {
-        const card = createElement(this._document, "article", {
-          className: "phg-prompt-card",
-          attributes: { "data-phg-record-id": record.id },
-        });
-        const main = createElement(this._document, "button", {
-          className: "phg-card-main",
-          type: "button",
-          attributes: {
-            "data-phg-action": "insert",
-            "data-phg-id": record.id,
-            "aria-label": `插入提示词：${record.name}`,
-          },
-        });
-        const name = createElement(this._document, "span", {
-          className: "phg-card-name",
-          text: record.name,
-        });
-        const previewText = String(record.prompt || "").replace(/\s+/gu, " ").trim();
-        const preview = createElement(this._document, "span", {
-          className: "phg-card-preview",
-          text: previewText || "（正文为空）",
-        });
-        main.append(name, preview);
-        const actions = createElement(this._document, "div", {
-          className: "phg-card-actions",
-        });
-        const edit = createElement(this._document, "button", {
-          className: "phg-card-action phg-card-action-edit",
-          type: "button",
-          attributes: {
-            "data-phg-action": "edit",
-            "data-phg-id": record.id,
-            "aria-label": `编辑提示词：${record.name}`,
-            title: "编辑提示词",
-          },
-        });
-        edit.append(createCardActionIcon(this._document, "edit"));
-        const remove = createElement(this._document, "button", {
-          className: "phg-card-action phg-card-action-danger",
-          type: "button",
-          attributes: {
-            "data-phg-action": "delete",
-            "data-phg-id": record.id,
-            "aria-label": `删除提示词：${record.name}`,
-            title: "删除提示词",
-          },
-        });
-        remove.append(createCardActionIcon(this._document, "delete"));
-        for (const button of [main, edit, remove]) {
+      if (this._listDrag?.dragged) {
+        this._syncCardInteractiveState();
+        return;
+      }
+      this._clearListDrag(false);
+      const nextPrompts = this._state.prompts;
+      const existingCards = this._promptCards();
+      const cardsById = new Map(
+        existingCards.map((card) => [
+          card.getAttribute("data-phg-record-id"),
+          card,
+        ]),
+      );
+      const currentIds = existingCards.map((card) =>
+        card.getAttribute("data-phg-record-id"),
+      );
+      const nextIdList = nextPrompts.map((record) => record.id);
+      if (
+        currentIds.length === nextIdList.length &&
+        currentIds.every((id, index) => id === nextIdList[index])
+      ) {
+        for (const record of nextPrompts) {
+          const card = cardsById.get(record.id);
+          if (card) {
+            this._syncPromptCard(card, record);
+          }
+        }
+        this._empty.hidden = nextPrompts.length > 0;
+        return;
+      }
+      const nextIds = new Set(nextIdList);
+      for (const card of existingCards) {
+        const id = card.getAttribute("data-phg-record-id");
+        if (!nextIds.has(id)) {
+          card.remove?.();
+          cardsById.delete(id);
+        }
+      }
+      const ordered = [];
+      for (const record of nextPrompts) {
+        let card = cardsById.get(record.id);
+        if (card) {
+          this._syncPromptCard(card, record);
+        } else {
+          card = this._createPromptCard(record);
+        }
+        ordered.push(card);
+      }
+      if (ordered.length) {
+        this._list.append(...ordered);
+      }
+      this._empty.hidden = nextPrompts.length > 0;
+    }
+
+    _createPromptCard(record) {
+      const card = createElement(this._document, "article", {
+        className: "phg-prompt-card",
+        attributes: { "data-phg-record-id": record.id, draggable: "false" },
+      });
+      const drag = createElement(this._document, "button", {
+        className: "phg-card-drag",
+        type: "button",
+        attributes: {
+          "data-phg-action": "reorder",
+          "data-phg-id": record.id,
+          "aria-label": `拖动调整顺序：${record.name}`,
+          title: "拖动调整顺序",
+          draggable: "false",
+        },
+      });
+      drag.append(createCardDragIcon(this._document));
+      const main = createElement(this._document, "button", {
+        className: "phg-card-main",
+        type: "button",
+        attributes: {
+          "data-phg-action": "insert",
+          "data-phg-id": record.id,
+          "aria-label": `插入提示词：${record.name}`,
+        },
+      });
+      const name = createElement(this._document, "span", {
+        className: "phg-card-name",
+        text: record.name,
+      });
+      const preview = createElement(this._document, "span", {
+        className: "phg-card-preview",
+        text: promptPreviewText(record.prompt),
+      });
+      main.append(name, preview);
+      const actions = createElement(this._document, "div", {
+        className: "phg-card-actions",
+      });
+      const edit = createElement(this._document, "button", {
+        className: "phg-card-action phg-card-action-edit",
+        type: "button",
+        attributes: {
+          "data-phg-action": "edit",
+          "data-phg-id": record.id,
+          "aria-label": `编辑提示词：${record.name}`,
+          title: "编辑提示词",
+        },
+      });
+      edit.append(createCardActionIcon(this._document, "edit"));
+      const remove = createElement(this._document, "button", {
+        className: "phg-card-action phg-card-action-danger",
+        type: "button",
+        attributes: {
+          "data-phg-action": "delete",
+          "data-phg-id": record.id,
+          "aria-label": `删除提示词：${record.name}`,
+          title: "删除提示词",
+        },
+      });
+      remove.append(createCardActionIcon(this._document, "delete"));
+      actions.append(edit, remove);
+      card.append(drag, main, actions);
+      this._syncPromptCard(card, record);
+      return card;
+    }
+
+    _syncPromptCard(card, record) {
+      const name = card.querySelector?.(".phg-card-name");
+      const preview = card.querySelector?.(".phg-card-preview");
+      if (name) {
+        name.textContent = record.name;
+      }
+      if (preview) {
+        preview.textContent = promptPreviewText(record.prompt);
+      }
+      const drag = card.querySelector?.('[data-phg-action="reorder"]');
+      const main = card.querySelector?.('[data-phg-action="insert"]');
+      const edit = card.querySelector?.('[data-phg-action="edit"]');
+      const remove = card.querySelector?.('[data-phg-action="delete"]');
+      if (drag) {
+        drag.setAttribute("aria-label", `拖动调整顺序：${record.name}`);
+        drag.setAttribute("data-phg-id", record.id);
+      }
+      if (main) {
+        main.setAttribute("aria-label", `插入提示词：${record.name}`);
+        main.setAttribute("data-phg-id", record.id);
+      }
+      if (edit) {
+        edit.setAttribute("aria-label", `编辑提示词：${record.name}`);
+        edit.setAttribute("data-phg-id", record.id);
+      }
+      if (remove) {
+        remove.setAttribute("aria-label", `删除提示词：${record.name}`);
+        remove.setAttribute("data-phg-id", record.id);
+      }
+      for (const button of [drag, main, edit, remove]) {
+        if (button) {
           button.disabled = this._state.busy;
         }
-        actions.append(edit, remove);
-        card.append(main, actions);
-        fragmentChildren.push(card);
       }
-      this._list.append(...fragmentChildren);
-      this._empty.hidden = this._state.prompts.length > 0;
+    }
+
+    _syncCardInteractiveState() {
+      const cardsById = new Map(
+        this._promptCards().map((card) => [
+          card.getAttribute("data-phg-record-id"),
+          card,
+        ]),
+      );
+      for (const record of this._state.prompts) {
+        const card = cardsById.get(record.id);
+        if (card) {
+          this._syncPromptCard(card, record);
+        }
+      }
     }
 
     _handleListClick(event) {
+      if (this._suppressNextInsert) {
+        this._suppressNextInsert = false;
+        const suppressed = event.target
+          ?.closest?.("[data-phg-action]")
+          ?.getAttribute("data-phg-action");
+        if (suppressed === "insert" || suppressed === "reorder" || !suppressed) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
       const actionButton = event.target?.closest?.("[data-phg-action]");
       if (!actionButton || actionButton.disabled) {
         return;
@@ -1486,6 +1775,9 @@
       const id = actionButton.getAttribute("data-phg-id");
       const record = this._state.prompts.find((entry) => entry.id === id);
       if (!record) {
+        return;
+      }
+      if (action === "reorder") {
         return;
       }
       if (action === "insert") {
@@ -1497,6 +1789,363 @@
         event.stopPropagation();
         this.openDeleteDialog(record, actionButton);
       }
+    }
+
+    _promptCards() {
+      return Array.from(this._list?.querySelectorAll?.(".phg-prompt-card") || []);
+    }
+
+    _orderedPromptIds() {
+      return this._promptCards().map((card) =>
+        card.getAttribute("data-phg-record-id"),
+      );
+    }
+
+    _restorePromptOrder(orderedIds) {
+      if (!this._list || !Array.isArray(orderedIds) || orderedIds.length === 0) {
+        return;
+      }
+      const cardsById = new Map(
+        this._promptCards().map((card) => [
+          card.getAttribute("data-phg-record-id"),
+          card,
+        ]),
+      );
+      const cards = orderedIds
+        .map((id) => cardsById.get(id))
+        .filter((card) => Boolean(card));
+      if (cards.length) {
+        this._list.append(...cards);
+      }
+    }
+
+    _resetListDragStyles(cards) {
+      for (const card of cards || this._promptCards()) {
+        if (!card?.style) {
+          continue;
+        }
+        card.style.transform = "";
+        card.style.transition = "";
+        card.style.zIndex = "";
+        card.style.willChange = "";
+      }
+    }
+
+    _clearListDrag(restoreOrigin) {
+      const drag = this._listDrag;
+      if (!drag) {
+        return;
+      }
+      if (drag.paintFrame && typeof this._window?.cancelAnimationFrame === "function") {
+        this._window.cancelAnimationFrame(drag.paintFrame);
+      }
+      this._listDrag = null;
+      this._list?.releasePointerCapture?.(drag.pointerId);
+      drag.card?.removeAttribute("data-phg-dragging");
+      this._list?.removeAttribute("data-phg-reordering");
+      this._resetListDragStyles(drag.cards);
+      if (restoreOrigin) {
+        this._restorePromptOrder(drag.originIds);
+      }
+    }
+
+    _handleListPointerDown(event) {
+      if (
+        this._destroyed ||
+        this._listDrag ||
+        (event.button ?? 0) !== 0 ||
+        this._state.busy ||
+        this._state.loading ||
+        this._state.prompts.length < 2
+      ) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target?.closest?.('[data-phg-action="edit"]') ||
+        target?.closest?.('[data-phg-action="delete"]')
+      ) {
+        return;
+      }
+      const handle = target?.closest?.('[data-phg-action="reorder"]');
+      const main = target?.closest?.('[data-phg-action="insert"]');
+      const fromHandle = Boolean(handle);
+      const fromMain = Boolean(main) && event.pointerType !== "touch";
+      if (!fromHandle && !fromMain) {
+        return;
+      }
+      const card = (handle || main)?.closest?.(".phg-prompt-card");
+      if (!card || handle?.disabled || main?.disabled) {
+        return;
+      }
+      const cards = this._promptCards();
+      const rects = cards.map((entry) => entry.getBoundingClientRect());
+      const firstTop = finiteNumber(rects[0]?.top);
+      const secondTop = finiteNumber(rects[1]?.top);
+      const firstHeight = Math.max(0, finiteNumber(rects[0]?.height));
+      this._listDrag = {
+        pointerId: event.pointerId,
+        start: { x: event.clientX, y: event.clientY },
+        card,
+        cards,
+        fromHandle,
+        fromIndex: cards.indexOf(card),
+        toIndex: cards.indexOf(card),
+        dragged: false,
+        originIds: this._orderedPromptIds(),
+        rects,
+        stride:
+          rects.length > 1 && Number.isFinite(secondTop - firstTop)
+            ? secondTop - firstTop
+            : firstHeight + 7,
+        scrollTop: finiteNumber(this._list.parentElement?.scrollTop),
+        lastClientY: event.clientY,
+        paintFrame: 0,
+      };
+      this._list.setPointerCapture?.(event.pointerId);
+    }
+
+    _handleListPointerMove(event) {
+      if (!this._listDrag || event.pointerId !== this._listDrag.pointerId) {
+        return;
+      }
+      const current = { x: event.clientX, y: event.clientY };
+      if (!this._listDrag.dragged) {
+        this._listDrag.dragged = isDragGesture(this._listDrag.start, current, 6);
+        if (!this._listDrag.dragged) {
+          return;
+        }
+        this._listDrag.card.setAttribute("data-phg-dragging", "true");
+        this._list.setAttribute("data-phg-reordering", "true");
+        this._listDrag.card.style.zIndex = "2";
+        this._listDrag.card.style.willChange = "transform";
+      }
+      event.preventDefault();
+      this._scheduleDragPaint(event.clientY);
+    }
+
+    _handleListPointerEnd(event, cancelled = false) {
+      if (!this._listDrag || event.pointerId !== this._listDrag.pointerId) {
+        return;
+      }
+      const drag = this._listDrag;
+      const dragged = drag.dragged;
+      if (!dragged) {
+        this._clearListDrag(false);
+        return;
+      }
+      event.preventDefault();
+      if (drag.lastClientY != null) {
+        this._paintListDrag(drag.lastClientY);
+      }
+      if (cancelled) {
+        this._clearListDrag(true);
+        return;
+      }
+      this._suppressNextInsert = !drag.fromHandle;
+      const orderedIds = moveIds(drag.originIds, drag.fromIndex, drag.toIndex);
+      const visualTop = finiteNumber(
+        drag.card.getBoundingClientRect?.().top,
+        Number.NaN,
+      );
+      this._clearListDrag(false);
+      this._restorePromptOrder(orderedIds);
+      this._settleDraggedCard(drag.card, visualTop);
+      void this._commitPromptOrder(orderedIds);
+    }
+
+    _handleListKeyDown(event) {
+      const handle = event.target?.closest?.('[data-phg-action="reorder"]');
+      if (!handle || handle.disabled || this._state.busy || this._state.loading) {
+        return;
+      }
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+        return;
+      }
+      event.preventDefault();
+      const id = handle.getAttribute("data-phg-id");
+      const ids = this._state.prompts.map((record) => record.id);
+      const fromIndex = ids.indexOf(id);
+      const toIndex = fromIndex + (event.key === "ArrowUp" ? -1 : 1);
+      if (fromIndex < 0 || toIndex < 0 || toIndex >= ids.length) {
+        return;
+      }
+      void this._commitPromptOrder(moveIds(ids, fromIndex, toIndex), id);
+    }
+
+    async _commitPromptOrder(orderedIds, focusId = null) {
+      this._restorePromptOrder(orderedIds);
+      const result = await this._controller?.reorderPrompts?.(orderedIds);
+      if (!result?.ok || !focusId || this._destroyed) {
+        return;
+      }
+      const handles = Array.from(
+        this._list?.querySelectorAll?.('[data-phg-action="reorder"]') || [],
+      );
+      handles
+        .find((button) => button.getAttribute("data-phg-id") === focusId)
+        ?.focus?.({ preventScroll: true });
+    }
+
+    _scheduleDragPaint(clientY) {
+      const drag = this._listDrag;
+      if (!drag?.dragged) {
+        return;
+      }
+      drag.lastClientY = clientY;
+      const paint = () => {
+        if (!this._listDrag?.dragged) {
+          if (this._listDrag) {
+            this._listDrag.paintFrame = 0;
+          }
+          return;
+        }
+        this._listDrag.paintFrame = 0;
+        const y = this._listDrag.lastClientY;
+        const scrolled = this._scrollListForDrag(y);
+        this._paintListDrag(y);
+        if (
+          scrolled &&
+          typeof this._window?.requestAnimationFrame === "function"
+        ) {
+          this._listDrag.paintFrame = this._window.requestAnimationFrame(paint);
+        }
+      };
+      if (typeof this._window?.requestAnimationFrame !== "function") {
+        this._scrollListForDrag(clientY);
+        this._paintListDrag(clientY);
+        return;
+      }
+      if (drag.paintFrame) {
+        return;
+      }
+      drag.paintFrame = this._window.requestAnimationFrame(paint);
+    }
+
+    _paintListDrag(clientY) {
+      const drag = this._listDrag;
+      if (!drag?.dragged || !Array.isArray(drag.cards)) {
+        return;
+      }
+      const scrollDelta =
+        finiteNumber(this._list.parentElement?.scrollTop) - drag.scrollTop;
+      const deltaY = clientY - drag.start.y + scrollDelta;
+      drag.toIndex = dropIndexFromDisplacement(
+        drag.fromIndex,
+        deltaY,
+        drag.stride,
+        drag.cards.length,
+      );
+      if (!Array.isArray(drag.appliedShifts)) {
+        drag.appliedShifts = new Array(drag.cards.length).fill(null);
+      }
+      for (let index = 0; index < drag.cards.length; index += 1) {
+        const card = drag.cards[index];
+        if (!card?.style) {
+          continue;
+        }
+        if (index === drag.fromIndex) {
+          card.style.transform = `translate3d(0, ${deltaY}px, 0)`;
+          continue;
+        }
+        const shift = listDragShift(
+          drag.fromIndex,
+          drag.toIndex,
+          index,
+          drag.stride,
+        );
+        if (drag.appliedShifts[index] === shift) {
+          continue;
+        }
+        card.style.transform = shift
+          ? `translate3d(0, ${shift}px, 0)`
+          : "translate3d(0, 0, 0)";
+        drag.appliedShifts[index] = shift;
+      }
+    }
+
+    _settleDraggedCard(card, visualTop) {
+      if (!card?.style) {
+        return;
+      }
+      const canAnimate =
+        Number.isFinite(visualTop) &&
+        typeof this._window?.requestAnimationFrame === "function" &&
+        !this._prefersReducedMotion();
+      if (!canAnimate) {
+        card.style.transform = "";
+        card.style.transition = "";
+        card.style.zIndex = "";
+        card.style.willChange = "";
+        return;
+      }
+      const nextTop = finiteNumber(card.getBoundingClientRect?.().top, Number.NaN);
+      const delta = visualTop - nextTop;
+      if (!Number.isFinite(nextTop) || Math.abs(delta) < 1) {
+        card.style.transform = "";
+        card.style.transition = "";
+        card.style.zIndex = "";
+        card.style.willChange = "";
+        return;
+      }
+      card.style.transition = "none";
+      card.style.zIndex = "2";
+      card.style.transform = `translate3d(0, ${delta}px, 0)`;
+      void card.offsetWidth;
+      this._window.requestAnimationFrame(() => {
+        card.style.transition = "transform 180ms cubic-bezier(.16, 1, .3, 1)";
+        card.style.transform = "translate3d(0, 0, 0)";
+        const finish = () => {
+          if (card.getAttribute?.("data-phg-dragging") === "true") {
+            return;
+          }
+          card.style.transition = "";
+          card.style.transform = "";
+          card.style.zIndex = "";
+          card.style.willChange = "";
+        };
+        if (typeof this._window.setTimeout === "function") {
+          this._window.setTimeout(finish, 220);
+        } else {
+          finish();
+        }
+      });
+    }
+
+    _prefersReducedMotion() {
+      return Boolean(
+        this._window?.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
+      );
+    }
+
+    _scrollListForDrag(clientY) {
+      const scroller = this._list?.parentElement;
+      if (!scroller || !Number.isFinite(clientY)) {
+        return false;
+      }
+      const rect = scroller.getBoundingClientRect?.();
+      if (!rect || !Number.isFinite(rect.height) || rect.height <= 0) {
+        return false;
+      }
+      if (typeof scroller.scrollTop !== "number") {
+        return false;
+      }
+      const zone = 36;
+      const maxStep = 16;
+      let delta = 0;
+      if (clientY < rect.top + zone) {
+        const intensity = Math.min(1, (rect.top + zone - clientY) / zone);
+        delta = -Math.max(2, maxStep * intensity);
+      } else if (clientY > rect.bottom - zone) {
+        const intensity = Math.min(1, (clientY - (rect.bottom - zone)) / zone);
+        delta = Math.max(2, maxStep * intensity);
+      }
+      if (!delta) {
+        return false;
+      }
+      const before = scroller.scrollTop;
+      scroller.scrollTop = Math.max(0, scroller.scrollTop + delta);
+      return scroller.scrollTop !== before;
     }
 
     _createDialogShell(titleText) {
@@ -1806,6 +2455,9 @@
     calculatePanelPosition,
     getFocusCycleTarget,
     isDragGesture,
+    dropIndexFromDisplacement,
+    listDragShift,
+    reorderRecords,
     PromptHelperController,
     PromptHelperUI,
   };

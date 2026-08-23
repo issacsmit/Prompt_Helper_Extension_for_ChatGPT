@@ -23,7 +23,7 @@
 | `storage.js` | Chrome `storage.local` 规范化、超时、错误、快照与订阅 | `Storage`、`StorageError` |
 | `prompt-engine.js` | 解析占位符优先级，计算光标或选区范围；维护历史 | `prepareInsertion()`、`updatePlaceholderHistory()` |
 | `chatgpt-editor.js` | ChatGPT composer 定位、字符书签和非覆盖式插入 | `ChatGPTComposerAdapter` |
-| `ui.js` | 布局纯函数、控制器、DOM UI、CRUD、对话框和拖拽 | `PromptHelperController`、`PromptHelperUI` 及布局辅助函数 |
+| `ui.js` | 布局纯函数、控制器、DOM UI、CRUD、列表排序、对话框和拖拽 | `PromptHelperController`、`PromptHelperUI` 及布局辅助函数 |
 | `content.js` | 依赖装配、单例、SPA 观察和销毁 | `initializePromptHelper()`、`destroyPromptHelper()` |
 
 不要绕过公开接口读取模块内部字段。浏览器与 Node 必须得到相同函数/构造器引用，以便零构建验证真实实现。
@@ -41,7 +41,7 @@
 
 1. UI 把表单意图交给控制器，不直接改持久状态。
 2. 控制器基于当前状态创建候选 prompts/history，进入 `busy`。
-3. `Storage.savePrompts()` 成功后才提交候选并重绘；失败恢复控制器快照并显示中文错误。
+3. `Storage.savePrompts()` 成功后才提交候选并重绘；失败恢复控制器快照并显示中文错误。拖动排序会先乐观更新列表顺序，写入失败再回滚。
 4. 同一扩展的其他标签通过 `storage.onChanged` 触发重新加载。若本标签正在写入，只记录 pending，写入结束后再同步，避免候选状态被中途覆盖。
 
 插入路径：
@@ -86,6 +86,7 @@ ChatGPT 是 SPA：路由或 composer 状态变化可替换整个 editor 节点�
 成功 `load()`、成功写入或相关 `storage.onChanged` 才推进存储层的最后已知状态。保存返回写入前的 `rollbackSnapshot`，失败时同一快照附在错误上。控制器另外保留自己的候选前快照：
 
 - 提示词/历史写失败：恢复完整 prompts 与 placeholderHistory。
+- 词条顺序写失败：恢复写入前的 prompts 顺序。
 - `【…】` 自动选中设置写失败：恢复写入前的开关值。
 - 浮钮位置写失败：本页保留已夹取的安全坐标并提示未持久化。
 - 写入期间收到跨标签事件：标记 pending，写入结束后重新 `load()`。
@@ -110,8 +111,9 @@ ChatGPT 是 SPA：路由或 composer 状态变化可替换整个 editor 节点�
 
 指针能力由 CSS 媒体查询决定：
 
-- `@media (hover: hover) and (pointer: fine)` 才启用入口的 3 px 悬停抬升与光晕，并让 `.phg-card-actions` 在静止时透明且不可点击；当前 `.phg-prompt-card:hover` 或 `:focus-within` 才显示编辑/删除。
-- `@media (hover: none), (pointer: coarse)` 让卡片操作始终可见、可点击，并把卡片操作、关闭和新增等关键控件维持为至少 44 px；不要依赖触屏模拟悬停。
+- `@media (hover: hover) and (pointer: fine)` 才启用入口的 3 px 悬停抬升与光晕，并让 `.phg-card-actions` 在静止时透明且不可点击；当前 `.phg-prompt-card:hover` 或 `:focus-within` 才显示编辑/删除。细指针也可从词条正文拖动排序，超过 6 px 阈值后抑制随后的插入点击。
+- `@media (hover: none), (pointer: coarse)` 让卡片操作始终可见、可点击，并把卡片操作、拖动手柄、关闭和新增等关键控件维持为至少 44 px；不要依赖触屏模拟悬停。触屏只从左侧手柄开始排序，以便词条正文仍可滚动列表。
+- 词条左侧六点手柄始终可见；拖动或方向键会通过 `reorderPrompts()` 把 `ph_prompts` 数组顺序写回存储。
 
 主题变量只定义在 `#phg-root`。显式主题选择器是 `html.dark #phg-root`、`html[data-theme="dark"] #phg-root`、`html.light #phg-root` 与 `html[data-theme="light"] #phg-root`；没有显式根主题时，再由 `prefers-color-scheme` 选择系统明暗值。主题变化直接通过根选择器重新计算变量，不需要复制 ChatGPT 的类名到扩展子树。
 
