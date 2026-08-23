@@ -90,7 +90,7 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 
 ### 用本地 Agent 下载源码
 
-把下面整段复制到**能读写磁盘的**编程助手。这是独立任务，不依赖任何旧对话。Agent 完成后，你仍须按上一节的第 1–6 步在 Chrome 里加载。
+把下面整段复制到**能读写磁盘的**编程助手。Agent 完成后，你仍须按上一节的第 1–6 步在 Chrome 里加载。
 
 ```text
 请把 Chrome 扩展「ChatGPT 提示词助手」的源码下载到这台电脑。
@@ -125,7 +125,7 @@ git clone https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT.git
 
 ### 用本地 Agent 更新
 
-更新是另一次独立任务。不要假设用户还在「帮我下载」的那次对话里，也不要假设 Agent 记得路径。把下面整段复制给能读写磁盘的编程助手。
+把下面整段复制给能读写磁盘的编程助手。
 
 ```text
 请更新这台电脑上已经在用的 Chrome 扩展「ChatGPT 提示词助手」（仓库 https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT）。
