@@ -113,7 +113,7 @@ ChatGPT 是 SPA：路由或 composer 状态变化可替换整个 editor 节点�
 
 指针能力由 CSS 媒体查询决定：
 
-- `@media (hover: hover) and (pointer: fine)` 才启用入口的 3 px 悬停抬升与光晕，并让 `.phg-card-actions` 在静止时透明且不可点击；当前 `.phg-prompt-card:hover` 或 `:focus-within` 才显示编辑/删除。细指针也可从词条正文拖动排序，超过 6 px 阈值后抑制随后的插入点击。
+- `@media (hover: hover) and (pointer: fine)` 才启用入口的 3 px 悬停抬升与光晕，并让 `.phg-card-actions` 在静止时透明且不可点击；当前 `.phg-prompt-card:hover` 或 `:focus-within` 才显示编辑/删除。细指针也可从词条正文拖动排序，超过 6 px 阈值后抑制随后的插入点击。词条拖拽的 pointer capture 必须打在按下的手柄或插入按钮上，不能打在列表容器上，否则浏览器会把随后的 click 重定向到列表，轻点无法插入。
 - `@media (hover: none), (pointer: coarse)` 让卡片操作始终可见、可点击，并把卡片操作、拖动手柄、关闭和新增等关键控件维持为至少 44 px；不要依赖触屏模拟悬停。触屏只从左侧手柄开始排序，以便词条正文仍可滚动列表。
 - 词条左侧六点手柄始终可见；拖动或方向键会通过 `reorderPrompts()` 把 `ph_prompts` 数组顺序写回存储。
 

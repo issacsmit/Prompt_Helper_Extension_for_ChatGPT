@@ -1919,7 +1919,7 @@
         this._window.cancelAnimationFrame(drag.paintFrame);
       }
       this._listDrag = null;
-      this._list?.releasePointerCapture?.(drag.pointerId);
+      (drag.captureTarget || this._list)?.releasePointerCapture?.(drag.pointerId);
       drag.card?.removeAttribute("data-phg-dragging");
       this._list?.removeAttribute("data-phg-reordering");
       this._resetListDragStyles(drag.cards);
@@ -1962,12 +1962,14 @@
       const firstTop = finiteNumber(rects[0]?.top);
       const secondTop = finiteNumber(rects[1]?.top);
       const firstHeight = Math.max(0, finiteNumber(rects[0]?.height));
+      const captureTarget = handle || main;
       this._listDrag = {
         pointerId: event.pointerId,
         start: { x: event.clientX, y: event.clientY },
         card,
         cards,
         fromHandle,
+        captureTarget,
         fromIndex: cards.indexOf(card),
         toIndex: cards.indexOf(card),
         dragged: false,
@@ -1981,7 +1983,7 @@
         lastClientY: event.clientY,
         paintFrame: 0,
       };
-      this._list.setPointerCapture?.(event.pointerId);
+      captureTarget.setPointerCapture?.(event.pointerId);
     }
 
     _handleListPointerMove(event) {

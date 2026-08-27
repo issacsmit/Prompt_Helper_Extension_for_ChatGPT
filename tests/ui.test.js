@@ -1083,6 +1083,57 @@ test("a sub-threshold pointer gesture on a card still inserts", async () => {
   assert.deepEqual(controller.insertCalls, ["a"]);
 });
 
+test("card pointer capture stays on the insert button so a retargeted click still inserts", async () => {
+  const { ui, controller, documentObject } = mountUi();
+  ui.render({
+    ...emptyState,
+    prompts: [
+      { id: "a", name: "甲", prompt: "一" },
+      { id: "b", name: "乙", prompt: "二" },
+    ],
+  });
+  const main = documentObject.querySelector('[data-phg-action="insert"]');
+  const list = documentObject.getElementById("phg-prompt-list");
+  main.dispatchEvent(
+    new FakeEvent("pointerdown", {
+      pointerId: 21,
+      clientX: 40,
+      clientY: 20,
+      button: 0,
+      pointerType: "mouse",
+      bubbles: true,
+    }),
+  );
+
+  assert.equal(main.hasPointerCapture(21), true);
+  assert.equal(list.hasPointerCapture(21), false);
+
+  const clickTarget = [main, list].find((element) =>
+    element.hasPointerCapture(21),
+  );
+  list.dispatchEvent(
+    new FakeEvent("pointermove", {
+      pointerId: 21,
+      clientX: 41,
+      clientY: 21,
+      bubbles: true,
+    }),
+  );
+  list.dispatchEvent(
+    new FakeEvent("pointerup", {
+      pointerId: 21,
+      clientX: 41,
+      clientY: 21,
+      bubbles: true,
+    }),
+  );
+  clickTarget.click();
+  await flushTasks();
+
+  assert.deepEqual(controller.reorderCalls, []);
+  assert.deepEqual(controller.insertCalls, ["a"]);
+});
+
 test("arrow keys on the drag handle move a prompt by one slot", async () => {
   const { ui, controller, documentObject } = mountUi();
   ui.render({
