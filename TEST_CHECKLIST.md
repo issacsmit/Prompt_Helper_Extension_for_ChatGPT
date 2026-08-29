@@ -2,7 +2,7 @@
 
 ## 说明与准备
 
-- [ ] 记录 Chrome 版本、扩展 `manifest.json` 版本、测试日期与操作系统。
+- [ ] 记录 Chrome 版本、扩展 `manifest.json` 版本、测试日期与操作系统；确认 `manifest.json` 与 `package.json` 版本一致，且不低于准备发布的 Git 标签。
 - [ ] 执行 `npm run verify`，确认所有自动化测试和语法检查通过。
 - [ ] 在 `chrome://extensions/` 使用“加载已解压的扩展程序”选择当前根目录。
 - [ ] 每次重新加载扩展后刷新现有 ChatGPT 页面，确认只有一个蓝紫色“提示框 + 光标”浮动入口。
@@ -116,7 +116,7 @@
 
 - [ ] `manifest.json` 声明 `storage` 权限和 `https://api.github.com/*` 主机权限，页面匹配范围仍为 `https://chatgpt.com/*`，没有后台/service worker 或远端脚本。
 - [ ] 完成打开、CRUD、插入、拖拽、主题与 SPA 流程（不点检查更新）后，扩展没有发起网络请求、没有读取或保存 API Key，也没有上传提示词或聊天内容。
-- [ ] 插入设置中点击「检查更新」：已是最新、发现新版本（出现 GitHub 按钮和重新加载说明）、失败时均可理解；不点该按钮则不访问 GitHub。
+- [ ] 插入设置中显示的“当前版本”与 `chrome://extensions/` / `manifest.json` 完全一致；点击「检查更新」后，已是最新、发现新版本（出现 GitHub 按钮和重新加载说明）、失败时均可理解；不点该按钮则不访问 GitHub。
 - [ ] 插入只更新输入框并触发宿主所需输入事件；发送按钮可以按 ChatGPT 规则启用，但扩展不自动发送消息。
 
 ## 控制台与网络检查

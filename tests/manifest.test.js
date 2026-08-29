@@ -7,6 +7,7 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
 const MANIFEST_PATH = path.join(ROOT, "manifest.json");
+const PACKAGE_PATH = path.join(ROOT, "package.json");
 
 const EXPECTED_JAVASCRIPT = Object.freeze([
   "constants.js",
@@ -21,6 +22,11 @@ const EXPECTED_JAVASCRIPT = Object.freeze([
 function readManifest() {
   assert.ok(fs.existsSync(MANIFEST_PATH), "manifest.json must exist at the extension root");
   return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
+}
+
+function readPackage() {
+  assert.ok(fs.existsSync(PACKAGE_PATH), "package.json must exist at the project root");
+  return JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
 }
 
 function collectUrls(value, urls = []) {
@@ -40,10 +46,12 @@ function collectUrls(value, urls = []) {
 
 test("manifest declares the exact MV3 identity, version, and storage permission", () => {
   const manifest = readManifest();
+  const packageJson = readPackage();
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.name, "ChatGPT 提示词助手");
-  assert.equal(manifest.version, "1.1.0");
+  assert.equal(manifest.version, "1.1.3");
+  assert.equal(packageJson.version, manifest.version);
   assert.deepEqual(manifest.permissions, ["storage"]);
   assert.deepEqual(manifest.host_permissions, ["https://api.github.com/*"]);
 });

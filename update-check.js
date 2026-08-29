@@ -9,7 +9,6 @@
   const RELEASE_URL_PREFIX =
     "https://github.com/issacsmit/Prompt_Helper_Extension_for_ChatGPT/";
   const CHECK_TIMEOUT_MS = 5000;
-  const FALLBACK_VERSION = "1.1.0";
 
   function normalizeVersion(value) {
     if (typeof value !== "string") {
@@ -47,9 +46,9 @@
   function readCurrentVersion(chromeApi = globalObject.chrome) {
     try {
       const version = chromeApi?.runtime?.getManifest?.()?.version;
-      return normalizeVersion(version) || FALLBACK_VERSION;
+      return normalizeVersion(version);
     } catch (_error) {
-      return FALLBACK_VERSION;
+      return null;
     }
   }
 
@@ -71,6 +70,15 @@
       Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
         ? options.timeoutMs
         : CHECK_TIMEOUT_MS;
+
+    if (!current) {
+      return {
+        status: "unavailable",
+        current: null,
+        code: "CURRENT_VERSION_UNAVAILABLE",
+        htmlUrl: GITHUB_RELEASES_PAGE,
+      };
+    }
 
     if (typeof fetchImpl !== "function") {
       return {

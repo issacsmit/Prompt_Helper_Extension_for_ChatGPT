@@ -136,9 +136,9 @@ ChatGPT 是 SPA：路由或 composer 状态变化可替换整个 editor 节点�
 ## 维护扩展版本
 
 1. 先确定变更是否需要迁移存储或修改权限；权限扩大必须单独评审。
-2. 更新 `manifest.json` 的 `version`，并同步 `package.json` 版本。
+2. 发布标签不会自动改变扩展版本；设置页只读取 `chrome.runtime.getManifest().version`。创建 GitHub Release / `vX.Y.Z` 标签前，必须先把 `manifest.json` 与 `package.json` 同步为同一个 `X.Y.Z`。
 3. 不改变脚本依赖顺序；如新增运行模块，同时更新 Manifest 测试、静态守卫与语法检查覆盖。
-4. 执行 `npm run verify`，解析 Manifest JSON，核对图标哈希和全部必需文件。
+4. 执行 `npm run verify`，确认 Manifest 与 package 版本一致，再解析 Manifest JSON、核对图标哈希和全部必需文件。
 5. 在 `chrome://extensions/` 重新加载扩展，刷新现有 ChatGPT 页面，再跑人工清单。
 
 ## 本地 fixture 与命令

@@ -1289,6 +1289,8 @@ test("settings dialog explains precedence and persists the bracket selection swi
 
 test("settings update check shows GitHub release link only when a newer version exists", async () => {
   const previousCheck = globalThis.PromptHelper.checkForUpdate;
+  const previousReadVersion = globalThis.PromptHelper.readCurrentVersion;
+  globalThis.PromptHelper.readCurrentVersion = () => "1.1.3";
   globalThis.PromptHelper.checkForUpdate = async () => ({
     status: "available",
     current: "1.0.0",
@@ -1305,6 +1307,14 @@ test("settings update check shows GitHub release link only when a newer version 
     const checkButton = documentObject.getElementById("phg-check-update");
     const status = documentObject.getElementById("phg-update-status");
     const link = documentObject.getElementById("phg-open-release");
+    const updateDescription = documentObject
+      .querySelectorAll(".phg-setting-description")
+      .find((element) => element.textContent.includes("当前版本"));
+    assert.ok(updateDescription);
+    assert.match(
+      updateDescription.textContent,
+      /当前版本 1\.1\.3/u,
+    );
     assert.ok(checkButton);
     assert.equal(status.hidden, true);
     assert.equal(link.hidden, true);
@@ -1323,6 +1333,28 @@ test("settings update check shows GitHub release link only when a newer version 
     );
   } finally {
     globalThis.PromptHelper.checkForUpdate = previousCheck;
+    globalThis.PromptHelper.readCurrentVersion = previousReadVersion;
+  }
+});
+
+test("settings does not invent a version when the extension manifest is unavailable", () => {
+  const previousReadVersion = globalThis.PromptHelper.readCurrentVersion;
+  globalThis.PromptHelper.readCurrentVersion = () => null;
+  try {
+    const { ui, documentObject } = mountUi();
+    ui.render(emptyState);
+    ui.openSettingsDialog();
+
+    const updateDescription = documentObject
+      .querySelectorAll(".phg-setting-description")
+      .find((element) => element.textContent.includes("当前版本"));
+    assert.ok(updateDescription);
+    assert.match(
+      updateDescription.textContent,
+      /当前版本未知/u,
+    );
+  } finally {
+    globalThis.PromptHelper.readCurrentVersion = previousReadVersion;
   }
 });
 

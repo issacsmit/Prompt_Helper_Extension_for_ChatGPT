@@ -1377,10 +1377,13 @@
         className: "phg-setting-note",
         text: "优先级：当前自定义光标 → 【光标】/[光标] → 第一处【…】 → 历史兼容占位符。只有实际命中的规则才会生效。",
       });
-      const currentVersion =
+      const detectedVersion =
         typeof namespace.readCurrentVersion === "function"
           ? namespace.readCurrentVersion()
-          : "1.1.0";
+          : null;
+      const currentVersionLabel = detectedVersion
+        ? `当前版本 ${detectedVersion}`
+        : "当前版本未知";
       const updateSection = createElement(this._document, "section", {
         className: "phg-update-check",
         attributes: { "aria-labelledby": "phg-update-title" },
@@ -1395,7 +1398,7 @@
       });
       const updateDescription = createElement(this._document, "span", {
         className: "phg-setting-description",
-        text: `当前版本 ${currentVersion}。只有点击下面的按钮时，才会向 GitHub 查询公开的版本号。`,
+        text: `${currentVersionLabel}。只有点击下面的按钮时，才会向 GitHub 查询公开的版本号。`,
       });
       updateCopy.append(updateTitle, updateDescription);
       const checkButton = createElement(this._document, "button", {

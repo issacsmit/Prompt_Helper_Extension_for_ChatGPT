@@ -7,8 +7,39 @@ const updateCheck = require("../update-check.js");
 
 test("update check exposes version helpers through CommonJS and PromptHelper", () => {
   assert.equal(typeof updateCheck.isNewerVersion, "function");
+  assert.equal(typeof updateCheck.readCurrentVersion, "function");
   assert.equal(typeof updateCheck.checkForUpdate, "function");
   assert.equal(globalThis.PromptHelper?.checkForUpdate, updateCheck.checkForUpdate);
+});
+
+test("current version comes from the loaded extension manifest without a stale fallback", () => {
+  const chromeApi = {
+    runtime: {
+      getManifest: () => ({ version: "1.1.3" }),
+    },
+  };
+
+  assert.equal(updateCheck.readCurrentVersion(chromeApi), "1.1.3");
+  assert.equal(updateCheck.readCurrentVersion(null), null);
+});
+
+test("update check fails closed when the loaded extension version is unavailable", async () => {
+  let fetched = false;
+  const result = await updateCheck.checkForUpdate({
+    chrome: null,
+    fetch: async () => {
+      fetched = true;
+      return { ok: true, json: async () => ({ tag_name: "v9.9.9" }) };
+    },
+  });
+
+  assert.equal(fetched, false);
+  assert.deepEqual(result, {
+    status: "unavailable",
+    current: null,
+    code: "CURRENT_VERSION_UNAVAILABLE",
+    htmlUrl: updateCheck.GITHUB_RELEASES_PAGE,
+  });
 });
 
 test("semver comparison treats dotted numbers as newer, not strings", () => {
