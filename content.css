@@ -825,9 +825,12 @@ html[data-theme="dark"] #phg-root {
 
 #phg-root .phg-panel-close,
 #phg-root .phg-panel-settings {
+  display: inline-flex;
   width: 32px;
   min-width: 32px;
   min-height: 32px;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border-color: transparent;
   background: transparent;

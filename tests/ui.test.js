@@ -1562,6 +1562,10 @@ test("content stylesheet encodes Quiet Orbit visuals and interaction states", ()
   assert.match(css, /\.phg-dialog-footer/u);
   assert.match(css, /\.phg-history-row/u);
   assert.match(css, /\.phg-panel-settings/u);
+  assert.match(
+    css,
+    /#phg-root \.phg-panel-close,\s*#phg-root \.phg-panel-settings\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/su,
+  );
   assert.match(css, /\.phg-switch-input:checked \+ \.phg-switch-track/u);
   assert.match(css, /\.phg-switch-input:focus-visible \+ \.phg-switch-track/u);
   assert.match(css, /\.phg-status\[data-phg-kind="error"\]/u);
