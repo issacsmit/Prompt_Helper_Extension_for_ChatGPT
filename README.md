@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/images/prompt-helper-launcher.png" width="96" alt="ChatGPT 提示词助手浮动按钮">
+  <img src="docs/images/prompt-helper-logo.svg" width="104" alt="ChatGPT 提示词助手图标">
   <h1>ChatGPT 提示词助手</h1>
   <p>在 ChatGPT 网页版集中管理常用提示词，一键插入，并把光标或选区准确放到需要填写的位置。</p>
   <p><strong>本地存储 · 零运行依赖 · 不联网 · 不自动发送</strong></p>

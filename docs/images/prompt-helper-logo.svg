@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 104.586" role="img" aria-labelledby="title">
+  <title id="title">ChatGPT 提示词助手</title>
+  <defs>
+    <linearGradient id="surface" x1="18" y1="8" x2="82" y2="98" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a675ff"/>
+      <stop offset="0.55" stop-color="#7448e5"/>
+      <stop offset="1" stop-color="#4d2bc5"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-15%" width="140%" height="145%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#32177d" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect x="4" y="4" width="92" height="96.586" rx="23" fill="url(#surface)" stroke="#ffffff" stroke-opacity="0.24" filter="url(#shadow)"/>
+  <path d="M54.9 74.6H30.4A10.8 10.8 0 0 1 19.6 63.8V38.4A10.8 10.8 0 0 1 30.4 27.6h39.6a10.8 10.8 0 0 1 10.8 10.8v25.4a10.8 10.8 0 0 1-2.5 6.9" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M31.4 39.6v20.5" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round"/>
+  <circle cx="61.4" cy="64.5" r="10.8" fill="#ffffff" fill-opacity="0.08" stroke="#cfc1ff" stroke-width="1.8"/>
+  <circle cx="61.4" cy="64.5" r="6.5" fill="none" stroke="#ffffff" stroke-opacity="0.48" stroke-width="1.4"/>
+  <path d="M61.1 64.1 61.8 80.2 65.1 77.1 69.1 83.4 71.5 81.8 67.9 75.9 73.2 75Z" fill="#ffffff" stroke="#5830c9" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>
